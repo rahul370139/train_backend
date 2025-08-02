@@ -1,11 +1,11 @@
 [phases.setup]
-nixPkgs = ["python310", "python310Packages.pip"]
+nixPkgs = ["python310", "python310Packages.pip", "python310Packages.setuptools"]
 
 [phases.install]
-cmds = ["python -m pip install -r backend/requirements.txt"]
+cmds = ["pip install -r backend/requirements-deploy.txt"]
 
 [phases.build]
 cmds = ["echo 'Build complete'"]
 
 [start]
-cmd = "cd backend && python -m uvicorn main:app --host 0.0.0.0 --port $PORT" 
+cmd = "cd backend && python -m uvicorn app:app --host 0.0.0.0 --port $PORT" 
