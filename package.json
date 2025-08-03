@@ -3,10 +3,10 @@
   "version": "0.1.0",
   "private": true,
   "scripts": {
-    "build": "cd frontend && next build",
-    "dev": "cd frontend && next dev",
-    "lint": "cd frontend && next lint",
-    "start": "cd frontend && next start"
+    "build": "next build",
+    "dev": "next dev",
+    "lint": "next lint",
+    "start": "next start"
   },
   "dependencies": {
     "@ai-sdk/openai": "latest",
