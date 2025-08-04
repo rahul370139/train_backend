@@ -4,6 +4,7 @@ Smart Career Pathfinder - Adaptive skill suggestions for career discovery
 
 import asyncio
 import json
+import os
 from typing import Dict, List, Optional, Any
 from pathlib import Path
 
