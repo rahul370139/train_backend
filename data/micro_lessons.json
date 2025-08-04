@@ -1,0 +1,253 @@
+{
+  "programming": {
+    "python_basics": {
+      "title": "Python Fundamentals",
+      "description": "Learn Python basics, syntax, and data structures",
+      "duration": "2-3 hours",
+      "difficulty": "beginner",
+      "skills": [
+        "Python",
+        "Programming",
+        "Basic Algorithms"
+      ],
+      "framework": "python"
+    },
+    "javascript_basics": {
+      "title": "JavaScript Fundamentals",
+      "description": "Learn JavaScript basics, DOM manipulation, and ES6+ features",
+      "duration": "2-3 hours",
+      "difficulty": "beginner",
+      "skills": [
+        "JavaScript",
+        "Web Development",
+        "DOM"
+      ],
+      "framework": "javascript"
+    },
+    "git_version_control": {
+      "title": "Git Version Control",
+      "description": "Learn Git basics, branching, merging, and collaboration",
+      "duration": "1-2 hours",
+      "difficulty": "beginner",
+      "skills": [
+        "Git",
+        "Version Control",
+        "Collaboration"
+      ],
+      "framework": "git"
+    },
+    "web_development": {
+      "title": "Web Development Basics",
+      "description": "Learn HTML, CSS, and basic web development concepts",
+      "duration": "3-4 hours",
+      "difficulty": "beginner",
+      "skills": [
+        "HTML",
+        "CSS",
+        "Web Development"
+      ],
+      "framework": "web"
+    }
+  },
+  "data_science": {
+    "sql_basics": {
+      "title": "SQL Fundamentals",
+      "description": "Learn SQL basics, queries, and database operations",
+      "duration": "2-3 hours",
+      "difficulty": "beginner",
+      "skills": [
+        "SQL",
+        "Database",
+        "Data Analysis"
+      ],
+      "framework": "sql"
+    },
+    "python_data_science": {
+      "title": "Python for Data Science",
+      "description": "Learn pandas, numpy, and data manipulation",
+      "duration": "3-4 hours",
+      "difficulty": "intermediate",
+      "skills": [
+        "Python",
+        "Pandas",
+        "NumPy",
+        "Data Analysis"
+      ],
+      "framework": "python"
+    },
+    "statistics_basics": {
+      "title": "Statistics Fundamentals",
+      "description": "Learn basic statistics, probability, and data analysis",
+      "duration": "2-3 hours",
+      "difficulty": "beginner",
+      "skills": [
+        "Statistics",
+        "Probability",
+        "Data Analysis"
+      ],
+      "framework": "statistics"
+    },
+    "machine_learning_intro": {
+      "title": "Introduction to Machine Learning",
+      "description": "Learn ML basics, algorithms, and scikit-learn",
+      "duration": "4-5 hours",
+      "difficulty": "intermediate",
+      "skills": [
+        "Machine Learning",
+        "Scikit-learn",
+        "Algorithms"
+      ],
+      "framework": "machine_learning"
+    }
+  },
+  "devops": {
+    "linux_basics": {
+      "title": "Linux Administration",
+      "description": "Learn Linux basics, commands, and system administration",
+      "duration": "2-3 hours",
+      "difficulty": "beginner",
+      "skills": [
+        "Linux",
+        "System Administration",
+        "Command Line"
+      ],
+      "framework": "linux"
+    },
+    "networking_basics": {
+      "title": "Network Fundamentals",
+      "description": "Learn networking basics, protocols, and infrastructure",
+      "duration": "2-3 hours",
+      "difficulty": "beginner",
+      "skills": [
+        "Networking",
+        "Protocols",
+        "Infrastructure"
+      ],
+      "framework": "networking"
+    },
+    "docker_basics": {
+      "title": "Docker Containerization",
+      "description": "Learn Docker basics, containers, and containerization",
+      "duration": "2-3 hours",
+      "difficulty": "intermediate",
+      "skills": [
+        "Docker",
+        "Containers",
+        "DevOps"
+      ],
+      "framework": "docker"
+    },
+    "kubernetes_basics": {
+      "title": "Kubernetes Orchestration",
+      "description": "Learn Kubernetes basics, pods, and orchestration",
+      "duration": "3-4 hours",
+      "difficulty": "advanced",
+      "skills": [
+        "Kubernetes",
+        "Orchestration",
+        "DevOps"
+      ],
+      "framework": "kubernetes"
+    }
+  },
+  "product_management": {
+    "product_strategy": {
+      "title": "Product Strategy Fundamentals",
+      "description": "Learn product strategy, market analysis, and positioning",
+      "duration": "2-3 hours",
+      "difficulty": "beginner",
+      "skills": [
+        "Product Strategy",
+        "Market Analysis",
+        "Positioning"
+      ],
+      "framework": "product_management"
+    },
+    "user_research": {
+      "title": "User Research Methods",
+      "description": "Learn user research, interviews, and user testing",
+      "duration": "2-3 hours",
+      "difficulty": "beginner",
+      "skills": [
+        "User Research",
+        "Interviews",
+        "User Testing"
+      ],
+      "framework": "product_management"
+    },
+    "data_analysis": {
+      "title": "Data Analysis for PMs",
+      "description": "Learn data analysis, metrics, and product analytics",
+      "duration": "2-3 hours",
+      "difficulty": "intermediate",
+      "skills": [
+        "Data Analysis",
+        "Metrics",
+        "Product Analytics"
+      ],
+      "framework": "product_management"
+    },
+    "stakeholder_management": {
+      "title": "Stakeholder Management",
+      "description": "Learn stakeholder management, communication, and influence",
+      "duration": "2-3 hours",
+      "difficulty": "intermediate",
+      "skills": [
+        "Stakeholder Management",
+        "Communication",
+        "Influence"
+      ],
+      "framework": "product_management"
+    }
+  },
+  "cybersecurity": {
+    "network_security": {
+      "title": "Network Security Fundamentals",
+      "description": "Learn network security, protocols, and threat detection",
+      "duration": "2-3 hours",
+      "difficulty": "beginner",
+      "skills": [
+        "Network Security",
+        "Protocols",
+        "Threat Detection"
+      ],
+      "framework": "cybersecurity"
+    },
+    "security_tools": {
+      "title": "Security Tools and Technologies",
+      "description": "Learn security tools, firewalls, and monitoring",
+      "duration": "2-3 hours",
+      "difficulty": "intermediate",
+      "skills": [
+        "Security Tools",
+        "Firewalls",
+        "Monitoring"
+      ],
+      "framework": "cybersecurity"
+    },
+    "incident_response": {
+      "title": "Incident Response",
+      "description": "Learn incident response, forensics, and threat hunting",
+      "duration": "3-4 hours",
+      "difficulty": "advanced",
+      "skills": [
+        "Incident Response",
+        "Forensics",
+        "Threat Hunting"
+      ],
+      "framework": "cybersecurity"
+    },
+    "compliance_basics": {
+      "title": "Security Compliance",
+      "description": "Learn security compliance, regulations, and best practices",
+      "duration": "2-3 hours",
+      "difficulty": "intermediate",
+      "skills": [
+        "Compliance",
+        "Regulations",
+        "Best Practices"
+      ],
+      "framework": "cybersecurity"
+    }
+  }
+}

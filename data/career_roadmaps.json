@@ -1,0 +1,265 @@
+{
+  "Software Developer": {
+    "entry_level": {
+      "title": "Junior Developer",
+      "skills": [
+        "Python",
+        "JavaScript",
+        "Git",
+        "Basic Algorithms"
+      ],
+      "courses": [
+        "Python Fundamentals",
+        "Web Development Basics",
+        "Version Control"
+      ],
+      "duration": "6-12 months",
+      "salary_range": "$60,000 - $80,000"
+    },
+    "mid_level": {
+      "title": "Software Developer",
+      "skills": [
+        "Full-Stack Development",
+        "Database Design",
+        "API Development",
+        "Testing"
+      ],
+      "courses": [
+        "Advanced Web Development",
+        "Database Systems",
+        "API Design",
+        "Testing Strategies"
+      ],
+      "duration": "2-3 years",
+      "salary_range": "$80,000 - $120,000"
+    },
+    "senior_level": {
+      "title": "Senior Developer",
+      "skills": [
+        "System Architecture",
+        "Team Leadership",
+        "Performance Optimization",
+        "DevOps"
+      ],
+      "courses": [
+        "System Design",
+        "Leadership Skills",
+        "DevOps Practices",
+        "Advanced Algorithms"
+      ],
+      "duration": "5+ years",
+      "salary_range": "$120,000 - $180,000"
+    }
+  },
+  "Data Scientist": {
+    "entry_level": {
+      "title": "Data Analyst",
+      "skills": [
+        "SQL",
+        "Python",
+        "Excel",
+        "Basic Statistics"
+      ],
+      "courses": [
+        "Data Analysis Fundamentals",
+        "SQL Mastery",
+        "Python for Data Science"
+      ],
+      "duration": "6-12 months",
+      "salary_range": "$65,000 - $85,000"
+    },
+    "mid_level": {
+      "title": "Data Scientist",
+      "skills": [
+        "Machine Learning",
+        "Statistical Analysis",
+        "Data Visualization",
+        "Big Data Tools"
+      ],
+      "courses": [
+        "Machine Learning Fundamentals",
+        "Statistical Analysis",
+        "Data Visualization",
+        "Big Data Technologies"
+      ],
+      "duration": "2-4 years",
+      "salary_range": "$85,000 - $130,000"
+    },
+    "senior_level": {
+      "title": "Senior Data Scientist",
+      "skills": [
+        "Deep Learning",
+        "MLOps",
+        "Team Leadership",
+        "Business Strategy"
+      ],
+      "courses": [
+        "Deep Learning",
+        "MLOps",
+        "Leadership Skills",
+        "Business Intelligence"
+      ],
+      "duration": "5+ years",
+      "salary_range": "$130,000 - $200,000"
+    }
+  },
+  "DevOps Engineer": {
+    "entry_level": {
+      "title": "System Administrator",
+      "skills": [
+        "Linux",
+        "Networking",
+        "Basic Scripting",
+        "Monitoring"
+      ],
+      "courses": [
+        "Linux Administration",
+        "Network Fundamentals",
+        "Shell Scripting",
+        "Monitoring Tools"
+      ],
+      "duration": "6-12 months",
+      "salary_range": "$70,000 - $90,000"
+    },
+    "mid_level": {
+      "title": "DevOps Engineer",
+      "skills": [
+        "Docker",
+        "Kubernetes",
+        "CI/CD",
+        "Cloud Platforms"
+      ],
+      "courses": [
+        "Containerization",
+        "Kubernetes",
+        "CI/CD Pipelines",
+        "Cloud Computing"
+      ],
+      "duration": "2-3 years",
+      "salary_range": "$90,000 - $140,000"
+    },
+    "senior_level": {
+      "title": "Senior DevOps Engineer",
+      "skills": [
+        "Architecture Design",
+        "Team Leadership",
+        "Security",
+        "Automation"
+      ],
+      "courses": [
+        "System Architecture",
+        "Security Best Practices",
+        "Leadership Skills",
+        "Advanced Automation"
+      ],
+      "duration": "5+ years",
+      "salary_range": "$140,000 - $200,000"
+    }
+  },
+  "Product Manager": {
+    "entry_level": {
+      "title": "Associate Product Manager",
+      "skills": [
+        "Product Strategy",
+        "User Research",
+        "Data Analysis",
+        "Communication"
+      ],
+      "courses": [
+        "Product Management Fundamentals",
+        "User Research Methods",
+        "Data Analysis",
+        "Communication Skills"
+      ],
+      "duration": "6-12 months",
+      "salary_range": "$75,000 - $95,000"
+    },
+    "mid_level": {
+      "title": "Product Manager",
+      "skills": [
+        "Product Strategy",
+        "User Experience",
+        "Market Analysis",
+        "Stakeholder Management"
+      ],
+      "courses": [
+        "Advanced Product Strategy",
+        "UX Design",
+        "Market Research",
+        "Stakeholder Management"
+      ],
+      "duration": "2-4 years",
+      "salary_range": "$95,000 - $150,000"
+    },
+    "senior_level": {
+      "title": "Senior Product Manager",
+      "skills": [
+        "Strategic Planning",
+        "Team Leadership",
+        "Business Strategy",
+        "Innovation"
+      ],
+      "courses": [
+        "Strategic Planning",
+        "Leadership Skills",
+        "Business Strategy",
+        "Innovation Management"
+      ],
+      "duration": "5+ years",
+      "salary_range": "$150,000 - $220,000"
+    }
+  },
+  "Cybersecurity Analyst": {
+    "entry_level": {
+      "title": "Security Analyst",
+      "skills": [
+        "Network Security",
+        "Security Tools",
+        "Incident Response",
+        "Compliance"
+      ],
+      "courses": [
+        "Network Security Fundamentals",
+        "Security Tools",
+        "Incident Response",
+        "Compliance Basics"
+      ],
+      "duration": "6-12 months",
+      "salary_range": "$70,000 - $90,000"
+    },
+    "mid_level": {
+      "title": "Cybersecurity Analyst",
+      "skills": [
+        "Threat Hunting",
+        "Penetration Testing",
+        "Security Architecture",
+        "Risk Assessment"
+      ],
+      "courses": [
+        "Threat Hunting",
+        "Penetration Testing",
+        "Security Architecture",
+        "Risk Assessment"
+      ],
+      "duration": "2-4 years",
+      "salary_range": "$90,000 - $140,000"
+    },
+    "senior_level": {
+      "title": "Senior Security Engineer",
+      "skills": [
+        "Security Strategy",
+        "Team Leadership",
+        "Advanced Threats",
+        "Compliance"
+      ],
+      "courses": [
+        "Security Strategy",
+        "Leadership Skills",
+        "Advanced Threat Analysis",
+        "Compliance Management"
+      ],
+      "duration": "5+ years",
+      "salary_range": "$140,000 - $200,000"
+    }
+  }
+}

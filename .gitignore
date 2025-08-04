@@ -1,29 +1,27 @@
-# Virtual Environment
-venv/
-backend/venv/
-__pycache__/
-*.pyc
+# See https://help.github.com/articles/ignoring-files/ for more about ignoring files.
 
-# Environment files
-.env
-.env.local
+# dependencies
+/node_modules
 
-# IDE files
-.vscode/
-.idea/
+# next.js
+/.next/
+/out/
 
-# OS files
-.DS_Store
-Thumbs.db
+# production
+/build
 
-# Logs
-*.log
+# debug
+npm-debug.log*
+yarn-debug.log*
+yarn-error.log*
+.pnpm-debug.log*
 
-# Test files
-.pytest_cache/
-tests/
+# env files
+.env*
 
-# Data files
-*.csv
-*.xlsx
-*.json
+# vercel
+.vercel
+
+# typescript
+*.tsbuildinfo
+next-env.d.ts
