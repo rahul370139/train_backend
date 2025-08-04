@@ -385,6 +385,39 @@ async def get_available_frameworks():
     frameworks = [{"value": f.value, "label": f.value.replace("_", " ").title()} for f in Framework]
     return {"frameworks": frameworks}
 
+@app.get("/api/skills")
+async def get_available_skills():
+    """Get all available skills for career planning"""
+    try:
+        # Define a comprehensive list of skills
+        skills = [
+            "Python", "JavaScript", "React", "Node.js", "TypeScript", "HTML", "CSS",
+            "Java", "C++", "C#", "Go", "Rust", "PHP", "Ruby", "Swift", "Kotlin",
+            "Django", "Flask", "Express.js", "Spring Boot", "Laravel", "ASP.NET",
+            "MongoDB", "PostgreSQL", "MySQL", "Redis", "Elasticsearch", "GraphQL",
+            "Docker", "Kubernetes", "AWS", "Azure", "GCP", "Terraform", "Ansible",
+            "Git", "GitHub", "CI/CD", "Jenkins", "GitLab", "Bitbucket",
+            "Machine Learning", "Deep Learning", "TensorFlow", "PyTorch", "Scikit-learn",
+            "Data Analysis", "Data Visualization", "Pandas", "NumPy", "Matplotlib",
+            "Tableau", "Power BI", "Excel", "SQL", "R", "SAS", "SPSS",
+            "Agile", "Scrum", "Kanban", "Project Management", "Leadership",
+            "Communication", "Problem Solving", "Critical Thinking", "Creativity",
+            "Teamwork", "Time Management", "Customer Service", "Sales", "Marketing",
+            "Finance", "Accounting", "Human Resources", "Operations", "Strategy",
+            "Research", "Writing", "Editing", "Translation", "Design", "UX/UI",
+            "Photography", "Video Editing", "Animation", "3D Modeling", "Game Development",
+            "Mobile Development", "iOS", "Android", "Flutter", "React Native",
+            "Web Development", "Frontend", "Backend", "Full Stack", "DevOps",
+            "Cybersecurity", "Network Security", "Penetration Testing", "Compliance",
+            "Blockchain", "Cryptocurrency", "Smart Contracts", "Web3", "DeFi",
+            "IoT", "Embedded Systems", "Robotics", "Automation", "AI Ethics",
+            "Data Privacy", "GDPR", "HIPAA", "SOX", "PCI DSS"
+        ]
+        return {"skills": skills}
+    except Exception as e:
+        logger.error(f"Failed to get skills: {e}")
+        raise HTTPException(500, "Failed to get skills")
+
 @app.get("/api/explanation-levels")
 async def get_explanation_levels():
     """Get list of available explanation levels."""
