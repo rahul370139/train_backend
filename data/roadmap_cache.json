@@ -1,0 +1,711 @@
+{
+  "Software Developer_entry": {
+    "foundational": {
+      "title": "Junior Software Developer",
+      "description": "Entry-level position focusing on learning core development principles and working on smaller tasks within a team.",
+      "skills": [
+        "Object-Oriented Programming",
+        "Data Structures and Algorithms",
+        "Version Control (Git)",
+        "HTML, CSS, JavaScript",
+        "Basic Database Knowledge",
+        "Testing Fundamentals"
+      ],
+      "duration": "12-18 months",
+      "salary_range": "$50,000 - $75,000",
+      "responsibilities": [
+        "Writing and testing code for small features",
+        "Debugging and fixing code issues",
+        "Collaborating with senior developers on projects",
+        "Participating in code reviews",
+        "Documenting code and processes"
+      ],
+      "learning_objectives": [
+        "Master a core programming language (e.g., Python, Java, JavaScript)",
+        "Understand software development lifecycle (SDLC)",
+        "Gain proficiency in using an IDE and debugging tools",
+        "Learn about different software design patterns",
+        "Build a strong foundation in data structures and algorithms"
+      ]
+    },
+    "intermediate": {
+      "title": "Mid-Level Software Developer",
+      "description": "Takes on more complex tasks, leads smaller projects, and contributes significantly to team success.",
+      "skills": [
+        "Object-Oriented Design",
+        "Design Patterns",
+        "Advanced Database Concepts (SQL, NoSQL)",
+        "API Development (REST, GraphQL)",
+        "Cloud Computing Fundamentals (AWS, Azure, GCP)",
+        "Agile Methodologies (Scrum, Kanban)",
+        "Testing Frameworks (JUnit, pytest)"
+      ],
+      "duration": "2-3 years",
+      "salary_range": "$75,000 - $120,000",
+      "responsibilities": [
+        "Leading development of modules within larger projects",
+        "Mentoring junior developers",
+        "Designing and implementing software solutions",
+        "Writing unit and integration tests",
+        "Troubleshooting complex technical issues",
+        "Participating in technical design discussions"
+      ],
+      "learning_objectives": [
+        "Deepen understanding of software architecture",
+        "Learn advanced testing techniques and automation",
+        "Gain experience with cloud platforms and infrastructure",
+        "Master a specific technology stack relevant to your field",
+        "Develop strong communication and collaboration skills"
+      ]
+    },
+    "advanced": {
+      "title": "Senior Software Developer",
+      "description": "Takes ownership of complex projects, leads teams, and drives technical innovation.",
+      "skills": [
+        "Microservices Architecture",
+        "DevOps Practices",
+        "Distributed Systems",
+        "Machine Learning/AI (Optional)",
+        "Security Best Practices",
+        "Leadership and Team Management",
+        "Technical Architecture Design"
+      ],
+      "duration": "5+ years",
+      "salary_range": "$120,000+",
+      "responsibilities": [
+        "Architecting and designing large-scale software systems",
+        "Leading and mentoring development teams",
+        "Driving technical strategy and innovation",
+        "Evaluating and implementing new technologies",
+        "Participating in product roadmap discussions",
+        "Ensuring high-quality code and system reliability"
+      ],
+      "learning_objectives": [
+        "Stay abreast of emerging technologies and industry trends",
+        "Develop strong leadership and communication skills",
+        "Gain expertise in specific domain areas or technologies",
+        "Contribute to open-source projects or technical communities",
+        "Mentor and guide junior developers"
+      ]
+    }
+  },
+  "Data Scientist_entry": {
+    "foundational": {
+      "title": "Junior Data Scientist",
+      "description": "Entry-level position focused on assisting senior data scientists with data analysis, cleaning, and basic modeling.",
+      "skills": [
+        "Python Programming",
+        "SQL",
+        "Data Manipulation (Pandas, NumPy)",
+        "Data Visualization (Matplotlib, Seaborn)",
+        "Basic Machine Learning Algorithms (Linear Regression, Logistic Regression)",
+        "Data Cleaning and Preprocessing",
+        "Version Control (Git)"
+      ],
+      "duration": "6-12 months",
+      "salary_range": "$50,000 - $75,000",
+      "responsibilities": [
+        "Assisting with data collection and cleaning",
+        "Performing exploratory data analysis",
+        "Creating visualizations to communicate insights",
+        "Implementing basic machine learning models under supervision",
+        "Documenting code and analysis",
+        "Collaborating with senior data scientists"
+      ],
+      "learning_objectives": [
+        "Gain a strong foundation in Python for data science",
+        "Master SQL for data querying and manipulation",
+        "Learn essential data preprocessing techniques",
+        "Understand the principles of supervised and unsupervised learning",
+        "Build proficiency in data visualization tools"
+      ]
+    },
+    "intermediate": {
+      "title": "Data Scientist",
+      "description": "Independent contributor responsible for building and deploying data science solutions.",
+      "skills": [
+        "Advanced Machine Learning Algorithms (Decision Trees, Random Forests, SVM)",
+        "Deep Learning (Neural Networks)",
+        "Model Evaluation and Selection",
+        "Feature Engineering",
+        "Data Storytelling",
+        "Cloud Computing (AWS, Azure, GCP)",
+        "Big Data Technologies (Spark, Hadoop)"
+      ],
+      "duration": "2-4 years",
+      "salary_range": "$80,000 - $120,000",
+      "responsibilities": [
+        "Designing and implementing end-to-end data science projects",
+        "Building predictive models and machine learning solutions",
+        "Conducting A/B testing and analyzing results",
+        "Communicating insights and recommendations to stakeholders",
+        "Staying abreast of emerging data science trends and techniques"
+      ],
+      "learning_objectives": [
+        "Deepen understanding of advanced machine learning algorithms",
+        "Gain experience with deep learning frameworks",
+        "Master model evaluation and selection techniques",
+        "Develop expertise in feature engineering",
+        "Enhance communication and data storytelling skills"
+      ]
+    },
+    "advanced": {
+      "title": "Senior Data Scientist / Lead Data Scientist",
+      "description": "Leadership role overseeing teams of data scientists, defining data strategy, and driving impactful business outcomes.",
+      "skills": [
+        "Leadership and Team Management",
+        "Data Architecture and Engineering",
+        "Big Data Systems and Scalability",
+        "Cloud Machine Learning Platforms",
+        "Research and Development in Data Science",
+        "Strong Business Acumen",
+        "Communication and Influence"
+      ],
+      "duration": "5+ years",
+      "salary_range": "$120,000 - $200,000+",
+      "responsibilities": [
+        "Leading and mentoring data science teams",
+        "Defining data science strategy and roadmap",
+        "Building and maintaining data infrastructure",
+        "Developing innovative data science solutions",
+        "Collaborating with cross-functional teams",
+        "Communicating data science impact to executives"
+      ],
+      "learning_objectives": [
+        "Develop strong leadership and team management skills",
+        "Gain expertise in data architecture and engineering",
+        "Master cloud machine learning platforms",
+        "Contribute to research and development in data science",
+        "Enhance business acumen and decision-making"
+      ]
+    }
+  },
+  "Data Scientist_7774324619689517697": {
+    "levels": [
+      {
+        "name": "Foundational",
+        "skills": [
+          "Basic programming",
+          "Problem solving"
+        ],
+        "salary_range": {
+          "min": 50000,
+          "max": 80000
+        },
+        "responsibilities": [
+          "Learn fundamentals",
+          "Build basic projects"
+        ],
+        "learning_objectives": [
+          "Master core concepts",
+          "Build portfolio"
+        ],
+        "duration_months": 24,
+        "portfolio_items": [
+          "Personal website",
+          "Simple applications"
+        ],
+        "advancement_opportunities": [
+          "Junior Developer",
+          "Internship"
+        ]
+      },
+      {
+        "name": "Intermediate",
+        "skills": [
+          "Advanced programming",
+          "System design"
+        ],
+        "salary_range": {
+          "min": 80000,
+          "max": 120000
+        },
+        "responsibilities": [
+          "Build complex systems",
+          "Mentor juniors"
+        ],
+        "learning_objectives": [
+          "Deep technical expertise",
+          "Leadership skills"
+        ],
+        "duration_months": 36,
+        "portfolio_items": [
+          "Complex applications",
+          "Open source contributions"
+        ],
+        "advancement_opportunities": [
+          "Senior Developer",
+          "Team Lead"
+        ]
+      },
+      {
+        "name": "Advanced",
+        "skills": [
+          "Architecture",
+          "Leadership"
+        ],
+        "salary_range": {
+          "min": 120000,
+          "max": 200000
+        },
+        "responsibilities": [
+          "Technical leadership",
+          "Strategic decisions"
+        ],
+        "learning_objectives": [
+          "Architecture expertise",
+          "Business acumen"
+        ],
+        "duration_months": 48,
+        "portfolio_items": [
+          "System architecture",
+          "Team leadership"
+        ],
+        "advancement_opportunities": [
+          "Principal Engineer",
+          "CTO"
+        ]
+      }
+    ]
+  },
+  "Web Developers_7864848815825643481": {
+    "levels": [
+      {
+        "name": "Foundational",
+        "skills": [
+          "Basic programming",
+          "Problem solving"
+        ],
+        "salary_range": {
+          "min": 50000,
+          "max": 80000
+        },
+        "responsibilities": [
+          "Learn fundamentals",
+          "Build basic projects"
+        ],
+        "learning_objectives": [
+          "Master core concepts",
+          "Build portfolio"
+        ],
+        "duration_months": 24,
+        "portfolio_items": [
+          "Personal website",
+          "Simple applications"
+        ],
+        "advancement_opportunities": [
+          "Junior Developer",
+          "Internship"
+        ]
+      },
+      {
+        "name": "Intermediate",
+        "skills": [
+          "Advanced programming",
+          "System design"
+        ],
+        "salary_range": {
+          "min": 80000,
+          "max": 120000
+        },
+        "responsibilities": [
+          "Build complex systems",
+          "Mentor juniors"
+        ],
+        "learning_objectives": [
+          "Deep technical expertise",
+          "Leadership skills"
+        ],
+        "duration_months": 36,
+        "portfolio_items": [
+          "Complex applications",
+          "Open source contributions"
+        ],
+        "advancement_opportunities": [
+          "Senior Developer",
+          "Team Lead"
+        ]
+      },
+      {
+        "name": "Advanced",
+        "skills": [
+          "Architecture",
+          "Leadership"
+        ],
+        "salary_range": {
+          "min": 120000,
+          "max": 200000
+        },
+        "responsibilities": [
+          "Technical leadership",
+          "Strategic decisions"
+        ],
+        "learning_objectives": [
+          "Architecture expertise",
+          "Business acumen"
+        ],
+        "duration_months": 48,
+        "portfolio_items": [
+          "System architecture",
+          "Team leadership"
+        ],
+        "advancement_opportunities": [
+          "Principal Engineer",
+          "CTO"
+        ]
+      }
+    ]
+  },
+  "Data Scientist_-5533124359254906595": {
+    "levels": [
+      {
+        "name": "Foundational",
+        "skills": [
+          "Basic programming",
+          "Problem solving"
+        ],
+        "salary_range": {
+          "min": 50000,
+          "max": 80000
+        },
+        "responsibilities": [
+          "Learn fundamentals",
+          "Build basic projects"
+        ],
+        "learning_objectives": [
+          "Master core concepts",
+          "Build portfolio"
+        ],
+        "duration_months": 24,
+        "portfolio_items": [
+          "Personal website",
+          "Simple applications"
+        ],
+        "advancement_opportunities": [
+          "Junior Developer",
+          "Internship"
+        ]
+      },
+      {
+        "name": "Intermediate",
+        "skills": [
+          "Advanced programming",
+          "System design"
+        ],
+        "salary_range": {
+          "min": 80000,
+          "max": 120000
+        },
+        "responsibilities": [
+          "Build complex systems",
+          "Mentor juniors"
+        ],
+        "learning_objectives": [
+          "Deep technical expertise",
+          "Leadership skills"
+        ],
+        "duration_months": 36,
+        "portfolio_items": [
+          "Complex applications",
+          "Open source contributions"
+        ],
+        "advancement_opportunities": [
+          "Senior Developer",
+          "Team Lead"
+        ]
+      },
+      {
+        "name": "Advanced",
+        "skills": [
+          "Architecture",
+          "Leadership"
+        ],
+        "salary_range": {
+          "min": 120000,
+          "max": 200000
+        },
+        "responsibilities": [
+          "Technical leadership",
+          "Strategic decisions"
+        ],
+        "learning_objectives": [
+          "Architecture expertise",
+          "Business acumen"
+        ],
+        "duration_months": 48,
+        "portfolio_items": [
+          "System architecture",
+          "Team leadership"
+        ],
+        "advancement_opportunities": [
+          "Principal Engineer",
+          "CTO"
+        ]
+      }
+    ]
+  },
+  "Web Developers_-7758817782366923529": {
+    "levels": [
+      {
+        "name": "Foundational",
+        "skills": [
+          "Basic programming",
+          "Problem solving"
+        ],
+        "salary_range": {
+          "min": 50000,
+          "max": 80000
+        },
+        "responsibilities": [
+          "Learn fundamentals",
+          "Build basic projects"
+        ],
+        "learning_objectives": [
+          "Master core concepts",
+          "Build portfolio"
+        ],
+        "duration_months": 24,
+        "portfolio_items": [
+          "Personal website",
+          "Simple applications"
+        ],
+        "advancement_opportunities": [
+          "Junior Developer",
+          "Internship"
+        ]
+      },
+      {
+        "name": "Intermediate",
+        "skills": [
+          "Advanced programming",
+          "System design"
+        ],
+        "salary_range": {
+          "min": 80000,
+          "max": 120000
+        },
+        "responsibilities": [
+          "Build complex systems",
+          "Mentor juniors"
+        ],
+        "learning_objectives": [
+          "Deep technical expertise",
+          "Leadership skills"
+        ],
+        "duration_months": 36,
+        "portfolio_items": [
+          "Complex applications",
+          "Open source contributions"
+        ],
+        "advancement_opportunities": [
+          "Senior Developer",
+          "Team Lead"
+        ]
+      },
+      {
+        "name": "Advanced",
+        "skills": [
+          "Architecture",
+          "Leadership"
+        ],
+        "salary_range": {
+          "min": 120000,
+          "max": 200000
+        },
+        "responsibilities": [
+          "Technical leadership",
+          "Strategic decisions"
+        ],
+        "learning_objectives": [
+          "Architecture expertise",
+          "Business acumen"
+        ],
+        "duration_months": 48,
+        "portfolio_items": [
+          "System architecture",
+          "Team leadership"
+        ],
+        "advancement_opportunities": [
+          "Principal Engineer",
+          "CTO"
+        ]
+      }
+    ]
+  },
+  "Data Scientist_8338676667288592183": {
+    "levels": [
+      {
+        "name": "Foundational",
+        "skills": [
+          "Basic programming",
+          "Problem solving"
+        ],
+        "salary_range": {
+          "min": 50000,
+          "max": 80000
+        },
+        "responsibilities": [
+          "Learn fundamentals",
+          "Build basic projects"
+        ],
+        "learning_objectives": [
+          "Master core concepts",
+          "Build portfolio"
+        ],
+        "duration_months": 24,
+        "portfolio_items": [
+          "Personal website",
+          "Simple applications"
+        ],
+        "advancement_opportunities": [
+          "Junior Developer",
+          "Internship"
+        ]
+      },
+      {
+        "name": "Intermediate",
+        "skills": [
+          "Advanced programming",
+          "System design"
+        ],
+        "salary_range": {
+          "min": 80000,
+          "max": 120000
+        },
+        "responsibilities": [
+          "Build complex systems",
+          "Mentor juniors"
+        ],
+        "learning_objectives": [
+          "Deep technical expertise",
+          "Leadership skills"
+        ],
+        "duration_months": 36,
+        "portfolio_items": [
+          "Complex applications",
+          "Open source contributions"
+        ],
+        "advancement_opportunities": [
+          "Senior Developer",
+          "Team Lead"
+        ]
+      },
+      {
+        "name": "Advanced",
+        "skills": [
+          "Architecture",
+          "Leadership"
+        ],
+        "salary_range": {
+          "min": 120000,
+          "max": 200000
+        },
+        "responsibilities": [
+          "Technical leadership",
+          "Strategic decisions"
+        ],
+        "learning_objectives": [
+          "Architecture expertise",
+          "Business acumen"
+        ],
+        "duration_months": 48,
+        "portfolio_items": [
+          "System architecture",
+          "Team leadership"
+        ],
+        "advancement_opportunities": [
+          "Principal Engineer",
+          "CTO"
+        ]
+      }
+    ]
+  },
+  "Web Developers_-2866337082198420565": {
+    "levels": [
+      {
+        "name": "Foundational",
+        "skills": [
+          "Basic programming",
+          "Problem solving"
+        ],
+        "salary_range": {
+          "min": 50000,
+          "max": 80000
+        },
+        "responsibilities": [
+          "Learn fundamentals",
+          "Build basic projects"
+        ],
+        "learning_objectives": [
+          "Master core concepts",
+          "Build portfolio"
+        ],
+        "duration_months": 24,
+        "portfolio_items": [
+          "Personal website",
+          "Simple applications"
+        ],
+        "advancement_opportunities": [
+          "Junior Developer",
+          "Internship"
+        ]
+      },
+      {
+        "name": "Intermediate",
+        "skills": [
+          "Advanced programming",
+          "System design"
+        ],
+        "salary_range": {
+          "min": 80000,
+          "max": 120000
+        },
+        "responsibilities": [
+          "Build complex systems",
+          "Mentor juniors"
+        ],
+        "learning_objectives": [
+          "Deep technical expertise",
+          "Leadership skills"
+        ],
+        "duration_months": 36,
+        "portfolio_items": [
+          "Complex applications",
+          "Open source contributions"
+        ],
+        "advancement_opportunities": [
+          "Senior Developer",
+          "Team Lead"
+        ]
+      },
+      {
+        "name": "Advanced",
+        "skills": [
+          "Architecture",
+          "Leadership"
+        ],
+        "salary_range": {
+          "min": 120000,
+          "max": 200000
+        },
+        "responsibilities": [
+          "Technical leadership",
+          "Strategic decisions"
+        ],
+        "learning_objectives": [
+          "Architecture expertise",
+          "Business acumen"
+        ],
+        "duration_months": 48,
+        "portfolio_items": [
+          "System architecture",
+          "Team leadership"
+        ],
+        "advancement_opportunities": [
+          "Principal Engineer",
+          "CTO"
+        ]
+      }
+    ]
+  }
+}
