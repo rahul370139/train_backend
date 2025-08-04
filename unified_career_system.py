@@ -4,6 +4,7 @@ Unified Career System - Complete career planning with roadmap, coaching, and rec
 
 import asyncio
 import json
+import os
 import uuid
 from datetime import datetime
 from typing import Dict, List, Optional, Any
