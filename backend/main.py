@@ -381,9 +381,123 @@ async def get_lessons_by_framework_endpoint(framework: Framework, limit: int = 1
 
 @app.get("/api/frameworks")
 async def get_available_frameworks():
-    """Get list of available frameworks."""
-    frameworks = [{"value": f.value, "label": f.value.replace("_", " ").title()} for f in Framework]
-    return {"frameworks": frameworks}
+    """Get all available frameworks for content processing"""
+    try:
+        frameworks = [framework.value for framework in Framework]
+        return {"frameworks": frameworks}
+    except Exception as e:
+        logger.error(f"Failed to get frameworks: {e}")
+        raise HTTPException(500, "Failed to get frameworks")
+
+@app.get("/api/skills")
+async def get_available_skills():
+    """Get all available skills for career planning"""
+    try:
+        # Define a comprehensive list of skills
+        skills = [
+            "Python", "JavaScript", "React", "Node.js", "TypeScript", "HTML", "CSS",
+            "Java", "C++", "C#", "Go", "Rust", "PHP", "Ruby", "Swift", "Kotlin",
+            "SQL", "MongoDB", "PostgreSQL", "MySQL", "Redis", "Elasticsearch",
+            "AWS", "Azure", "Google Cloud", "Docker", "Kubernetes", "Terraform",
+            "Git", "GitHub", "GitLab", "Linux", "Unix", "Windows", "macOS",
+            "Machine Learning", "Deep Learning", "Data Analysis", "Data Science",
+            "Statistics", "R", "MATLAB", "TensorFlow", "PyTorch", "Scikit-learn",
+            "Pandas", "NumPy", "Matplotlib", "Seaborn", "Jupyter", "Tableau",
+            "Power BI", "Excel", "Google Analytics", "Adobe Analytics",
+            "UI/UX Design", "Figma", "Sketch", "Adobe XD", "InVision",
+            "Product Management", "Agile", "Scrum", "Kanban", "Jira", "Confluence",
+            "Project Management", "Leadership", "Communication", "Public Speaking",
+            "Technical Writing", "Documentation", "API Design", "REST", "GraphQL",
+            "Microservices", "Serverless", "CI/CD", "Jenkins", "GitHub Actions",
+            "CircleCI", "Travis CI", "Testing", "Unit Testing", "Integration Testing",
+            "E2E Testing", "Jest", "Cypress", "Selenium", "Performance Testing",
+            "Security", "Cybersecurity", "Penetration Testing", "OWASP",
+            "DevOps", "Site Reliability Engineering", "Monitoring", "Logging",
+            "Prometheus", "Grafana", "ELK Stack", "Splunk", "New Relic",
+            "Mobile Development", "iOS", "Android", "React Native", "Flutter",
+            "Xamarin", "Ionic", "Cordova", "Web Development", "Frontend",
+            "Backend", "Full Stack", "Progressive Web Apps", "WebAssembly",
+            "Blockchain", "Smart Contracts", "Solidity", "Web3", "Ethereum",
+            "Bitcoin", "Cryptocurrency", "NFTs", "DeFi", "Game Development",
+            "Unity", "Unreal Engine", "Cocos2d", "Godot", "AR/VR",
+            "Augmented Reality", "Virtual Reality", "Computer Vision",
+            "Natural Language Processing", "NLP", "Chatbots", "Voice Recognition",
+            "Internet of Things", "IoT", "Embedded Systems", "Raspberry Pi",
+            "Arduino", "Robotics", "Automation", "RPA", "Business Intelligence",
+            "Data Engineering", "ETL", "Data Warehousing", "Big Data", "Hadoop",
+            "Spark", "Kafka", "Airflow", "dbt", "Snowflake", "Redshift",
+            "Sales", "Marketing", "Digital Marketing", "SEO", "SEM", "Google Ads",
+            "Facebook Ads", "Content Marketing", "Social Media Marketing",
+            "Email Marketing", "Marketing Automation", "HubSpot", "Salesforce",
+            "Customer Relationship Management", "CRM", "Enterprise Resource Planning",
+            "ERP", "Supply Chain Management", "Logistics", "Finance", "Accounting",
+            "Human Resources", "HR", "Recruitment", "Talent Management",
+            "Learning Management System", "LMS", "E-learning", "Instructional Design",
+            "Healthcare", "Telemedicine", "Health Informatics", "Bioinformatics",
+            "Legal Tech", "RegTech", "FinTech", "InsurTech", "EdTech",
+            "Real Estate", "PropTech", "Travel", "Tourism", "Hospitality",
+            "Retail", "E-commerce", "Marketplace", "B2B", "B2C", "SaaS",
+            "Platform as a Service", "PaaS", "Infrastructure as a Service", "IaaS",
+            "Software as a Service", "SaaS", "API Management", "API Gateway",
+            "Service Mesh", "Istio", "Linkerd", "Kong", "Nginx", "Apache",
+            "Load Balancing", "CDN", "Content Delivery Network", "Edge Computing",
+            "Serverless Computing", "Function as a Service", "FaaS", "Lambda",
+            "Event-Driven Architecture", "Message Queues", "RabbitMQ", "Apache Kafka",
+            "Redis Pub/Sub", "WebSockets", "Real-time Communication", "WebRTC",
+            "Video Streaming", "Audio Processing", "Image Processing", "Computer Graphics",
+            "3D Modeling", "Animation", "Video Editing", "Audio Editing",
+            "Content Creation", "Copywriting", "Technical Writing", "Creative Writing",
+            "Translation", "Localization", "Internationalization", "i18n",
+            "Accessibility", "WCAG", "Usability", "User Experience", "UX Research",
+            "User Interface", "UI Design", "Design Systems", "Component Libraries",
+            "Design Tokens", "Branding", "Visual Design", "Typography", "Color Theory",
+            "Information Architecture", "Wireframing", "Prototyping", "User Testing",
+            "A/B Testing", "Conversion Rate Optimization", "CRO", "Growth Hacking",
+            "Viral Marketing", "Influencer Marketing", "Affiliate Marketing",
+            "Referral Marketing", "Word of Mouth", "Brand Awareness", "Customer Acquisition",
+            "Customer Retention", "Customer Lifetime Value", "CLV", "Churn Rate",
+            "Net Promoter Score", "NPS", "Customer Satisfaction", "CSAT",
+            "Customer Support", "Help Desk", "Ticketing System", "Knowledge Base",
+            "FAQ", "Documentation", "User Manuals", "Training", "Onboarding",
+            "Customer Success", "Account Management", "Sales Operations", "Revenue Operations",
+            "Business Development", "Partnerships", "Strategic Alliances", "Mergers & Acquisitions",
+            "Venture Capital", "Private Equity", "Angel Investing", "Crowdfunding",
+            "Initial Public Offering", "IPO", "Secondary Market", "Stock Market",
+            "Trading", "Investment Banking", "Commercial Banking", "Retail Banking",
+            "Digital Banking", "Mobile Banking", "Online Banking", "Payment Processing",
+            "Payment Gateways", "Stripe", "PayPal", "Square", "Venmo", "Apple Pay",
+            "Google Pay", "Samsung Pay", "Cryptocurrency Payments", "Bitcoin Payments",
+            "Ethereum Payments", "Smart Contracts", "DeFi", "Decentralized Finance",
+            "Yield Farming", "Liquidity Mining", "Staking", "Governance Tokens",
+            "DAO", "Decentralized Autonomous Organization", "Web3", "Metaverse",
+            "Virtual Worlds", "Digital Assets", "NFTs", "Non-Fungible Tokens",
+            "Gaming", "Esports", "Streaming", "Twitch", "YouTube", "TikTok",
+            "Social Media", "Facebook", "Instagram", "Twitter", "LinkedIn",
+            "Snapchat", "Pinterest", "Reddit", "Discord", "Slack", "Microsoft Teams",
+            "Zoom", "Google Meet", "Webex", "Skype", "Telegram", "WhatsApp",
+            "Signal", "Privacy", "Security", "Encryption", "End-to-End Encryption",
+            "Zero-Knowledge Proofs", "Homomorphic Encryption", "Differential Privacy",
+            "Federated Learning", "Edge AI", "TinyML", "MLOps", "DataOps", "DevSecOps",
+            "GitOps", "Infrastructure as Code", "IaC", "Terraform", "CloudFormation",
+            "Ansible", "Chef", "Puppet", "Salt", "Configuration Management",
+            "Container Orchestration", "Service Discovery", "Load Balancing", "Auto Scaling",
+            "High Availability", "Fault Tolerance", "Disaster Recovery", "Backup & Recovery",
+            "Data Backup", "Cloud Backup", "On-Premises", "Hybrid Cloud", "Multi-Cloud",
+            "Edge Computing", "Fog Computing", "Quantum Computing", "Quantum Cryptography",
+            "Quantum Machine Learning", "Quantum Algorithms", "Quantum Error Correction",
+            "Quantum Supremacy", "Quantum Internet", "Quantum Sensors", "Quantum Imaging",
+            "Quantum Communication", "Quantum Key Distribution", "QKD", "Post-Quantum Cryptography",
+            "Lattice-Based Cryptography", "Code-Based Cryptography", "Multivariate Cryptography",
+            "Hash-Based Cryptography", "Isogeny-Based Cryptography", "Supersingular Isogeny",
+            "Elliptic Curve Cryptography", "ECC", "RSA", "AES", "DES", "Triple DES",
+            "Blowfish", "Twofish", "ChaCha20", "Poly1305", "ChaCha20-Poly1305",
+            "AES-GCM", "AES-CCM", "AES-OCB", "AES-SIV", "AES-GCM-SIV", "AES-GCM-SIV-256",
+            "AES-GCM-SIV-512", "AES-GCM-SIV-1024", "AES-GCM-SIV-2048", "AES-GCM-SIV-4096"
+        ]
+        return {"skills": skills}
+    except Exception as e:
+        logger.error(f"Failed to get skills: {e}")
+        raise HTTPException(500, "Failed to get skills")
 
 @app.get("/api/explanation-levels")
 async def get_explanation_levels():
