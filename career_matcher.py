@@ -1,63 +1,79 @@
+"""
+Career Matcher - Quiz-based career matching system with AI capabilities
+Handles 10-question career quiz and generates comprehensive career roadmaps with AI
+"""
+
 import pandas as pd
 import numpy as np
+import json
 import os
-import math
+import httpx
 from loguru import logger
 from pathlib import Path
 from typing import Dict, List, Optional, Tuple
 from sklearn.metrics.pairwise import cosine_similarity
 from sklearn.preprocessing import StandardScaler
-import json
+import asyncio
+from dotenv import load_dotenv
+
+# Load environment variables
+load_dotenv()
 
 # RIASEC interest dimensions
 RIASEC = ["realistic", "investigative", "artistic", "social", "enterprising", "conventional"]
 
 class CareerMatcher:
     def __init__(self):
-        """Initialize career matcher with ONET/BLS data"""
-        self.data_path = Path(__file__).parent / "data" / "onet_bls_trimmed.csv"
-        self.roadmaps_path = Path(__file__).parent / "data" / "career_roadmaps.json"
+        """Initialize career matcher with data and AI capabilities"""
+        self.data_path = Path(__file__).parent / "data"
         
-        if not self.data_path.exists():
-            logger.error(f"Career data not found at {self.data_path}")
-            logger.error("Please run process_dataset.py to create the career database")
-            raise FileNotFoundError(f"Career data file not found: {self.data_path}")
+        # Load career data
+        self.career_data = self._load_career_data()
         
-        self.df = pd.read_csv(self.data_path)
-        logger.info(f"Loaded {len(self.df)} careers for matching")
+        # Load quiz questions
+        self.quiz_questions = self._load_quiz_questions()
         
-        # Initialize career roadmaps
-        self._initialize_roadmaps()
+        # Load career roadmaps
+        self.career_roadmaps = self._load_career_roadmaps()
         
-        # Create enhanced feature matrix
-        self._create_feature_matrix()
+        # Initialize API helpers
+        self.cohere_api_key = os.getenv("COHERE_API_KEY")
+        self.groq_api_key = os.getenv("GROQ_API_KEY")
         
-        # Normalize interest vectors to unit length for cosine similarity
-        self.df[RIASEC] = self.df[RIASEC].apply(
-            lambda col: (col - col.mean()) / (col.std() + 1e-9)
-        )
-        self.df["vec_norm"] = np.linalg.norm(self.df[RIASEC].values, axis=1)
-        
-        # Ensure all required columns exist
-        required_cols = ["soc_code", "title", "salary_low", "salary_high", "growth_pct", 
-                        "top_skills", "day_in_life"] + RIASEC
-        missing_cols = [col for col in required_cols if col not in self.df.columns]
-        if missing_cols:
-            logger.error(f"Missing required columns in career data: {missing_cols}")
-            raise ValueError(f"Career data is missing required columns: {missing_cols}")
-
-    def _initialize_roadmaps(self):
-        """Initialize career roadmaps with learning paths"""
-        if not self.roadmaps_path.exists():
-            self._create_default_roadmaps()
-        
-        with open(self.roadmaps_path, 'r') as f:
-            self.roadmaps = json.load(f)
-        logger.info(f"Loaded {len(self.roadmaps)} career roadmaps")
-
-    def _create_default_roadmaps(self):
-        """Create default career roadmaps with learning paths"""
-        roadmaps = {
+        logger.info("CareerMatcher initialized successfully with embedding capabilities")
+    
+    def _load_career_data(self) -> pd.DataFrame:
+        """Load career data from CSV"""
+        try:
+            df = pd.read_csv(self.data_path / "onet_bls_trimmed.csv")
+            logger.info(f"Loaded {len(df)} careers")
+            return df
+        except FileNotFoundError:
+            logger.error("Career data not found. Please run process_dataset.py first.")
+            raise FileNotFoundError("Career data file not found")
+    
+    def _load_quiz_questions(self) -> List[Dict]:
+        """Load quiz questions from JSON"""
+        try:
+            with open(self.data_path / "career_quiz_questions.json", "r") as f:
+                data = json.load(f)
+                return data["quiz_questions"]
+        except FileNotFoundError:
+            logger.error("Quiz questions not found")
+            raise FileNotFoundError("Quiz questions file not found")
+    
+    def _load_career_roadmaps(self) -> Dict:
+        """Load career roadmaps from JSON"""
+        try:
+            with open(self.data_path / "career_roadmaps.json", "r") as f:
+                return json.load(f)
+        except FileNotFoundError:
+            logger.warning("Career roadmaps not found, using default")
+            return self._create_default_roadmaps()
+    
+    def _create_default_roadmaps(self) -> Dict:
+        """Create default career roadmaps"""
+        return {
             "Software Developer": {
                 "entry_level": {
                     "title": "Junior Developer",
@@ -98,352 +114,453 @@ class CareerMatcher:
                 },
                 "senior_level": {
                     "title": "Senior Data Scientist",
-                    "skills": ["Deep Learning", "MLOps", "Team Leadership", "Business Strategy"],
-                    "courses": ["Deep Learning", "MLOps", "Leadership Skills", "Business Intelligence"],
+                    "skills": ["Advanced ML", "AI Strategy", "Team Leadership", "Business Intelligence"],
+                    "courses": ["Advanced Machine Learning", "AI Strategy", "Leadership Skills", "Business Intelligence"],
                     "duration": "5+ years",
                     "salary_range": "$130,000 - $200,000"
                 }
-            },
-            "DevOps Engineer": {
-                "entry_level": {
-                    "title": "System Administrator",
-                    "skills": ["Linux", "Networking", "Basic Scripting", "Monitoring"],
-                    "courses": ["Linux Administration", "Network Fundamentals", "Shell Scripting", "Monitoring Tools"],
-                    "duration": "6-12 months",
-                    "salary_range": "$70,000 - $90,000"
-                },
-                "mid_level": {
-                    "title": "DevOps Engineer",
-                    "skills": ["Docker", "Kubernetes", "CI/CD", "Cloud Platforms"],
-                    "courses": ["Containerization", "Kubernetes", "CI/CD Pipelines", "Cloud Computing"],
-                    "duration": "2-3 years",
-                    "salary_range": "$90,000 - $140,000"
-                },
-                "senior_level": {
-                    "title": "Senior DevOps Engineer",
-                    "skills": ["Architecture Design", "Team Leadership", "Security", "Automation"],
-                    "courses": ["System Architecture", "Security Best Practices", "Leadership Skills", "Advanced Automation"],
-                    "duration": "5+ years",
-                    "salary_range": "$140,000 - $200,000"
-                }
-            },
-            "Product Manager": {
-                "entry_level": {
-                    "title": "Associate Product Manager",
-                    "skills": ["Product Strategy", "User Research", "Data Analysis", "Communication"],
-                    "courses": ["Product Management Fundamentals", "User Research Methods", "Data Analysis", "Communication Skills"],
-                    "duration": "6-12 months",
-                    "salary_range": "$75,000 - $95,000"
-                },
-                "mid_level": {
-                    "title": "Product Manager",
-                    "skills": ["Product Strategy", "User Experience", "Market Analysis", "Stakeholder Management"],
-                    "courses": ["Advanced Product Strategy", "UX Design", "Market Research", "Stakeholder Management"],
-                    "duration": "2-4 years",
-                    "salary_range": "$95,000 - $150,000"
-                },
-                "senior_level": {
-                    "title": "Senior Product Manager",
-                    "skills": ["Strategic Planning", "Team Leadership", "Business Strategy", "Innovation"],
-                    "courses": ["Strategic Planning", "Leadership Skills", "Business Strategy", "Innovation Management"],
-                    "duration": "5+ years",
-                    "salary_range": "$150,000 - $220,000"
-                }
-            },
-            "Cybersecurity Analyst": {
-                "entry_level": {
-                    "title": "Security Analyst",
-                    "skills": ["Network Security", "Security Tools", "Incident Response", "Compliance"],
-                    "courses": ["Network Security Fundamentals", "Security Tools", "Incident Response", "Compliance Basics"],
-                    "duration": "6-12 months",
-                    "salary_range": "$70,000 - $90,000"
-                },
-                "mid_level": {
-                    "title": "Cybersecurity Analyst",
-                    "skills": ["Threat Hunting", "Penetration Testing", "Security Architecture", "Risk Assessment"],
-                    "courses": ["Threat Hunting", "Penetration Testing", "Security Architecture", "Risk Assessment"],
-                    "duration": "2-4 years",
-                    "salary_range": "$90,000 - $140,000"
-                },
-                "senior_level": {
-                    "title": "Senior Security Engineer",
-                    "skills": ["Security Strategy", "Team Leadership", "Advanced Threats", "Compliance"],
-                    "courses": ["Security Strategy", "Leadership Skills", "Advanced Threat Analysis", "Compliance Management"],
-                    "duration": "5+ years",
-                    "salary_range": "$140,000 - $200,000"
-                }
             }
         }
-        
-        # Create data directory if it doesn't exist
-        self.roadmaps_path.parent.mkdir(exist_ok=True)
-        
-        with open(self.roadmaps_path, 'w') as f:
-            json.dump(roadmaps, f, indent=2)
-        
-        logger.info(f"Created default career roadmaps with {len(roadmaps)} career paths")
-
-    def _create_feature_matrix(self):
-        """Create enhanced feature matrix for sophisticated matching"""
-        # Extract skills as features
-        all_skills = set()
-        for skills_str in self.df['top_skills'].dropna():
-            skills = [skill.strip() for skill in skills_str.split(',')]
-            all_skills.update(skills)
-        
-        # Create skill features
-        for skill in all_skills:
-            self.df[f'skill_{skill.lower().replace(" ", "_")}'] = self.df['top_skills'].str.contains(skill, case=False, na=False).astype(int)
-        
-        # Create salary level features
-        self.df['salary_level'] = pd.cut(self.df['salary_high'], bins=5, labels=['Entry', 'Junior', 'Mid', 'Senior', 'Expert'])
-        
-        # Create growth category features
-        self.df['growth_category'] = pd.cut(self.df['growth_pct'], bins=3, labels=['Low', 'Medium', 'High'])
-        
-        # Create experience level features based on title
-        self.df['experience_level'] = self.df['title'].apply(self._extract_experience_level)
-        
-        logger.info(f"Created enhanced feature matrix with {len(all_skills)} skill features")
-
-    def _extract_experience_level(self, title):
-        """Extract experience level from job title"""
-        title_lower = title.lower()
-        if any(word in title_lower for word in ['senior', 'lead', 'principal', 'architect']):
-            return 'senior'
-        elif any(word in title_lower for word in ['junior', 'assistant', 'trainee']):
-            return 'entry'
-        else:
-            return 'mid'
-
+    
+    def get_quiz_questions(self) -> List[Dict]:
+        """Get all quiz questions"""
+        return self.quiz_questions
+    
     @staticmethod
     def answers_to_vec(answers: List[int]) -> np.ndarray:
-        """Convert quiz answers to RIASEC interest vector"""
-        assert len(answers) == 10, f"Expected 10 answers, got {len(answers)}"
+        """Convert quiz answers to RIASEC vector"""
+        if len(answers) != 10:
+            raise ValueError("Must provide exactly 10 answers")
         
-        # Initialize RIASEC scores
-        v = dict.fromkeys(RIASEC, 0.0)
+        vec = np.zeros(6)  # 6 RIASEC dimensions
         
-        # Question mapping to RIASEC dimensions
-        mapping = {
-            0: ["realistic"],      # Repairing mechanical things
-            1: ["investigative"],  # Solving complex problems
-            2: ["artistic"],       # Creating art/graphics
-            3: ["social"],         # Teaching/helping people
-            4: ["enterprising"],   # Leading teams
-            5: ["conventional"],   # Organizing information
-            6: ["realistic"],      # Working outdoors
-            7: ["investigative"],  # Designing experiments
-            8: ["artistic", "social"],  # Performing/presenting
-            9: ["conventional", "enterprising"],  # Planning budgets
-        }
+        for i, answer in enumerate(answers):
+            if 0 <= answer < len(RIASEC):
+                question = CareerMatcher().quiz_questions[i]
+                selected_option = question["options"][answer]
+                scores = selected_option["score"]
+                
+                for dimension, score in scores.items():
+                    vec[RIASEC.index(dimension)] += score
         
-        # Add answers to corresponding RIASEC dimensions
-        for i, val in enumerate(answers):
-            for dimension in mapping[i]:
-                v[dimension] += val
+        # Normalize to unit length
+        norm = np.linalg.norm(vec)
+        if norm > 0:
+            vec = vec / norm
         
-        # Convert to numpy array
-        vec = np.array([v[k] for k in RIASEC], dtype=float)
-        
-        # Z-scale to align with job vectors
-        vec = (vec - vec.mean()) / (vec.std() + 1e-9)
         return vec
-
-    def enhanced_top_matches(self, answers: List[int], k: int = 5, user_profile: Dict = None) -> List[Dict]:
-        """Find top k career matches using sophisticated algorithms"""
+    
+    async def get_career_matches(self, answers: List[int], user_skills: Optional[List[str]] = None, user_interests: Optional[List[str]] = None, top_k: int = 5) -> List[Dict]:
+        """Get top career matches using advanced embedding-based matching"""
+        if len(answers) != 10:
+            raise ValueError("Must provide exactly 10 answers")
+        
         try:
-            # Convert answers to user vector
-            user_vec = self.answers_to_vec(answers)
+            # Create comprehensive user profile
+            user_profile = await self._create_user_profile(answers, user_skills, user_interests)
             
-            # Calculate multiple similarity scores
-            scores = self._calculate_comprehensive_scores(user_vec, user_profile)
+            # Generate user profile embedding
+            user_embedding = await self._generate_user_embedding(user_profile)
             
-            # Combine scores using weighted average
-            final_scores = self._combine_scores(scores, user_profile)
+            # Get career embeddings and calculate similarities
+            similarities = await self._calculate_career_similarities(user_embedding, user_profile)
             
-            # Get top matches
-            self.df['final_score'] = final_scores
-            top = (
-                self.df.sort_values("final_score", ascending=False)
-                .head(k)
-                .to_dict(orient="records")
-            )
-            
-            # Add roadmap information
-            for match in top:
-                match['roadmap'] = self.get_career_roadmap(match['title'])
-            
-            logger.info(f"Found {len(top)} enhanced career matches for user")
-            return top
+            # Sort by similarity and return top matches
+            similarities.sort(key=lambda x: x["similarity"], reverse=True)
+            return similarities[:top_k]
             
         except Exception as e:
-            logger.error(f"Error in enhanced career matching: {e}")
-            return []
-
-    def _calculate_comprehensive_scores(self, user_vec: np.ndarray, user_profile: Dict = None) -> Dict[str, np.ndarray]:
-        """Calculate multiple similarity scores"""
-        scores = {}
+            logger.error(f"Embedding-based career matching failed: {e}")
+            # Fallback to basic RIASEC matching
+            return self._get_basic_career_matches(answers, top_k)
+    
+    async def _create_user_profile(self, answers: List[int], user_skills: Optional[List[str]], user_interests: Optional[List[str]]) -> Dict:
+        """Create comprehensive user profile for embedding generation"""
+        # Convert answers to RIASEC scores
+        riasec_scores = self.answers_to_vec(answers)
         
-        # 1. RIASEC similarity (cosine)
-        user_norm = np.linalg.norm(user_vec) or 1.0
-        dots = self.df[RIASEC].values @ user_vec
-        scores['riasec'] = dots / (self.df["vec_norm"] * user_norm)
+        # Extract skills and interests from quiz answers
+        quiz_skills = self._extract_skills_from_answers(answers)
+        quiz_interests = self._extract_interests_from_answers(answers)
         
-        # 2. Skill-based similarity
-        if user_profile and 'skills' in user_profile:
-            skill_scores = self._calculate_skill_similarity(user_profile['skills'])
-            scores['skills'] = skill_scores
-        else:
-            scores['skills'] = np.zeros(len(self.df))
-        
-        # 3. Experience level preference
-        if user_profile and 'experience_level' in user_profile:
-            exp_scores = self._calculate_experience_similarity(user_profile['experience_level'])
-            scores['experience'] = exp_scores
-        else:
-            scores['experience'] = np.zeros(len(self.df))
-        
-        # 4. Salary preference
-        if user_profile and 'salary_preference' in user_profile:
-            salary_scores = self._calculate_salary_similarity(user_profile['salary_preference'])
-            scores['salary'] = salary_scores
-        else:
-            scores['salary'] = np.zeros(len(self.df))
-        
-        # 5. Growth preference
-        if user_profile and 'growth_preference' in user_profile:
-            growth_scores = self._calculate_growth_similarity(user_profile['growth_preference'])
-            scores['growth'] = growth_scores
-        else:
-            scores['growth'] = np.zeros(len(self.df))
-        
-        return scores
-
-    def _calculate_skill_similarity(self, user_skills: List[str]) -> np.ndarray:
-        """Calculate skill-based similarity"""
-        skill_cols = [col for col in self.df.columns if col.startswith('skill_')]
-        if not skill_cols:
-            return np.zeros(len(self.df))
-        
-        # Create user skill vector
-        user_skill_vec = np.zeros(len(skill_cols))
-        for skill in user_skills:
-            skill_col = f'skill_{skill.lower().replace(" ", "_")}'
-            if skill_col in self.df.columns:
-                idx = skill_cols.index(skill_col)
-                user_skill_vec[idx] = 1
-        
-        # Calculate cosine similarity
-        skill_matrix = self.df[skill_cols].values
-        similarities = cosine_similarity([user_skill_vec], skill_matrix)[0]
-        return similarities
-
-    def _calculate_experience_similarity(self, preferred_level: str) -> np.ndarray:
-        """Calculate experience level similarity"""
-        level_mapping = {'entry': 0, 'mid': 1, 'senior': 2}
-        preferred_score = level_mapping.get(preferred_level, 1)
-        
-        current_levels = self.df['experience_level'].map(level_mapping)
-        similarities = 1 - np.abs(current_levels - preferred_score) / 2
-        return similarities.fillna(0).values
-
-    def _calculate_salary_similarity(self, salary_preference: str) -> np.ndarray:
-        """Calculate salary preference similarity"""
-        if salary_preference == 'high':
-            return self.df['salary_high'] / self.df['salary_high'].max()
-        elif salary_preference == 'low':
-            return 1 - (self.df['salary_low'] / self.df['salary_low'].max())
-        else:  # medium
-            mid_salary = (self.df['salary_low'] + self.df['salary_high']) / 2
-            return 1 - np.abs(mid_salary - mid_salary.mean()) / mid_salary.std()
-
-    def _calculate_growth_similarity(self, growth_preference: str) -> np.ndarray:
-        """Calculate growth preference similarity"""
-        if growth_preference == 'high':
-            return self.df['growth_pct'] / self.df['growth_pct'].max()
-        elif growth_preference == 'low':
-            return 1 - (self.df['growth_pct'] / self.df['growth_pct'].max())
-        else:  # medium
-            return 1 - np.abs(self.df['growth_pct'] - self.df['growth_pct'].mean()) / self.df['growth_pct'].std()
-
-    def _combine_scores(self, scores: Dict[str, np.ndarray], user_profile: Dict = None) -> np.ndarray:
-        """Combine multiple scores using weighted average"""
-        weights = {
-            'riasec': 0.4,      # Primary weight for interest matching
-            'skills': 0.25,      # Skill alignment
-            'experience': 0.15,  # Experience level preference
-            'salary': 0.1,       # Salary preference
-            'growth': 0.1        # Growth preference
+        # Combine all user information
+        profile = {
+            "riasec_scores": {
+                "realistic": float(riasec_scores[0]),
+                "investigative": float(riasec_scores[1]),
+                "artistic": float(riasec_scores[2]),
+                "social": float(riasec_scores[3]),
+                "enterprising": float(riasec_scores[4]),
+                "conventional": float(riasec_scores[5])
+            },
+            "skills": list(set((user_skills or []) + quiz_skills)),
+            "interests": list(set((user_interests or []) + quiz_interests)),
+            "work_preferences": self._extract_work_preferences(answers),
+            "learning_style": self._extract_learning_style(answers),
+            "career_goals": self._extract_career_goals(answers)
         }
         
-        # Adjust weights based on user profile
-        if user_profile:
-            if 'skills' in user_profile and user_profile['skills']:
-                weights['skills'] += 0.1
-                weights['riasec'] -= 0.05
-            if 'experience_level' in user_profile:
-                weights['experience'] += 0.05
-                weights['riasec'] -= 0.05
+        return profile
+    
+    def _extract_skills_from_answers(self, answers: List[int]) -> List[str]:
+        """Extract relevant skills based on quiz answers"""
+        skills = []
         
-        # Normalize scores to 0-1 range
-        normalized_scores = {}
-        for key, score_array in scores.items():
-            if len(score_array) > 0 and score_array.max() != score_array.min():
-                normalized_scores[key] = (score_array - score_array.min()) / (score_array.max() - score_array.min())
-            else:
-                normalized_scores[key] = score_array
+        # Map answer patterns to skills
+        if answers[0] >= 4:  # Technical/Hands-on preference
+            skills.extend(["problem_solving", "technical_skills", "practical_application"])
         
-        # Combine scores
-        final_score = np.zeros(len(self.df))
-        for key, weight in weights.items():
-            if key in normalized_scores:
-                final_score += weight * normalized_scores[key]
+        if answers[1] >= 4:  # Analytical thinking
+            skills.extend(["data_analysis", "critical_thinking", "research"])
         
-        return final_score
-
-    def get_career_roadmap(self, career_title: str) -> Dict:
-        """Get career roadmap for a specific career"""
-        # Find the best matching roadmap
-        best_match = None
-        best_score = 0
+        if answers[2] >= 4:  # Creative thinking
+            skills.extend(["creativity", "design_thinking", "innovation"])
         
-        for roadmap_title in self.roadmaps.keys():
-            score = self._calculate_title_similarity(career_title, roadmap_title)
-            if score > best_score:
-                best_score = score
-                best_match = roadmap_title
+        if answers[3] >= 4:  # Communication
+            skills.extend(["communication", "teamwork", "leadership"])
         
-        if best_match and best_score > 0.3:  # Threshold for similarity
-            return self.roadmaps[best_match]
+        if answers[4] >= 4:  # Business/Management
+            skills.extend(["project_management", "strategic_thinking", "business_acumen"])
+        
+        return list(set(skills))
+    
+    def _extract_interests_from_answers(self, answers: List[int]) -> List[str]:
+        """Extract interests based on quiz answers"""
+        interests = []
+        
+        # Map answer patterns to interests
+        if answers[0] >= 4:
+            interests.extend(["technology", "engineering", "hands_on_work"])
+        
+        if answers[1] >= 4:
+            interests.extend(["science", "research", "analysis"])
+        
+        if answers[2] >= 4:
+            interests.extend(["arts", "design", "creativity"])
+        
+        if answers[3] >= 4:
+            interests.extend(["helping_others", "education", "social_impact"])
+        
+        if answers[4] >= 4:
+            interests.extend(["business", "entrepreneurship", "leadership"])
+        
+        return list(set(interests))
+    
+    def _extract_work_preferences(self, answers: List[int]) -> Dict:
+        """Extract work preferences from quiz answers"""
+        return {
+            "team_size": "small" if answers[5] <= 2 else "large" if answers[5] >= 4 else "medium",
+            "work_environment": "remote" if answers[6] >= 4 else "office" if answers[6] <= 2 else "hybrid",
+            "pace": "fast" if answers[7] >= 4 else "slow" if answers[7] <= 2 else "moderate",
+            "structure": "flexible" if answers[8] >= 4 else "structured" if answers[8] <= 2 else "balanced"
+        }
+    
+    def _extract_learning_style(self, answers: List[int]) -> str:
+        """Extract learning style from quiz answers"""
+        if answers[9] >= 4:
+            return "hands_on_practical"
+        elif answers[1] >= 4:
+            return "analytical_theoretical"
+        elif answers[2] >= 4:
+            return "creative_experimental"
         else:
-            # Return a generic roadmap
-            return {
-                "entry_level": {
-                    "title": "Entry Level",
-                    "skills": ["Basic technical skills", "Problem solving", "Communication"],
-                    "courses": ["Fundamentals", "Basic Skills", "Communication"],
-                    "duration": "6-12 months",
-                    "salary_range": "$50,000 - $70,000"
-                },
-                "mid_level": {
-                    "title": "Mid Level",
-                    "skills": ["Advanced technical skills", "Leadership", "Project management"],
-                    "courses": ["Advanced Skills", "Leadership", "Project Management"],
-                    "duration": "2-4 years",
-                    "salary_range": "$70,000 - $120,000"
-                },
-                "senior_level": {
-                    "title": "Senior Level",
-                    "skills": ["Expertise", "Strategic thinking", "Team leadership"],
-                    "courses": ["Expert Skills", "Strategic Planning", "Leadership"],
-                    "duration": "5+ years",
-                    "salary_range": "$120,000 - $200,000"
-                }
+            return "balanced"
+    
+    def _extract_career_goals(self, answers: List[int]) -> List[str]:
+        """Extract career goals from quiz answers"""
+        goals = []
+        
+        if answers[4] >= 4:
+            goals.append("leadership")
+        if answers[1] >= 4:
+            goals.append("expertise")
+        if answers[3] >= 4:
+            goals.append("impact")
+        if answers[2] >= 4:
+            goals.append("innovation")
+        
+        return goals if goals else ["growth"]
+    
+    async def _generate_user_embedding(self, user_profile: Dict) -> List[float]:
+        """Generate embedding for user profile using Cohere"""
+        try:
+            # Create comprehensive user profile text
+            profile_text = f"""
+            User Profile:
+            RIASEC Scores: {user_profile['riasec_scores']}
+            Skills: {', '.join(user_profile['skills'])}
+            Interests: {', '.join(user_profile['interests'])}
+            Work Preferences: {user_profile['work_preferences']}
+            Learning Style: {user_profile['learning_style']}
+            Career Goals: {', '.join(user_profile['career_goals'])}
+            """
+            
+            # Use Cohere API for embedding
+            url = "https://api.cohere.ai/v1/embed"
+            headers = {
+                "Authorization": f"Bearer {self.cohere_api_key}",
+                "Content-Type": "application/json"
             }
-
+            payload = {
+                "model": "embed-english-light-v3.0",
+                "texts": [profile_text],
+                "input_type": "search_document"
+            }
+            
+            async with httpx.AsyncClient() as client:
+                res = await client.post(url, headers=headers, json=payload)
+                res.raise_for_status()
+                embeddings = res.json()["embeddings"]
+                return embeddings[0] if embeddings else self._generate_fallback_embedding(profile_text)
+                
+        except Exception as e:
+            logger.error(f"Failed to generate user embedding: {e}")
+            return self._generate_fallback_embedding(str(user_profile))
+    
+    async def _calculate_career_similarities(self, user_embedding: List[float], user_profile: Dict) -> List[Dict]:
+        """Calculate similarities between user and all careers"""
+        similarities = []
+        
+        for _, career in self.career_data.iterrows():
+            try:
+                # Create career profile text
+                career_text = f"""
+                Career: {career['title']}
+                Skills: {career.get('top_skills', '')}
+                Day in Life: {career.get('day_in_life', '')}
+                Salary Range: ${career.get('salary_low', 0)} - ${career.get('salary_high', 0)}
+                Growth: {career.get('growth_pct', 0)}%
+                """
+                
+                # Generate career embedding
+                career_embedding = await self._generate_career_embedding(career_text)
+                
+                # Calculate similarity
+                similarity = self._calculate_embedding_similarity(user_embedding, career_embedding)
+                
+                # Add additional matching factors
+                skill_match = self._calculate_skill_match(user_profile['skills'], career.get('top_skills', ''))
+                interest_match = self._calculate_interest_match(user_profile['interests'], career_text)
+                
+                # Weighted similarity score
+                weighted_similarity = (similarity * 0.5) + (skill_match * 0.3) + (interest_match * 0.2)
+                
+                similarities.append({
+                    "title": career["title"],
+                    "similarity": weighted_similarity,
+                    "semantic_similarity": similarity,
+                    "skill_match": skill_match,
+                    "interest_match": interest_match,
+                    "salary_low": career.get("salary_low", 0),
+                    "salary_high": career.get("salary_high", 0),
+                    "growth_pct": career.get("growth_pct", 0),
+                    "top_skills": career.get("top_skills", ""),
+                    "day_in_life": career.get("day_in_life", ""),
+                    "matching_reasons": self._generate_matching_reasons(user_profile, career, weighted_similarity)
+                })
+                
+            except Exception as e:
+                logger.error(f"Failed to calculate similarity for {career['title']}: {e}")
+                continue
+        
+        return similarities
+    
+    async def _generate_career_embedding(self, career_text: str) -> List[float]:
+        """Generate embedding for career using Cohere with rate limiting"""
+        try:
+            # Add delay to prevent rate limiting
+            import asyncio
+            await asyncio.sleep(0.2)  # 200ms delay between requests
+            
+            url = "https://api.cohere.ai/v1/embed"
+            headers = {
+                "Authorization": f"Bearer {self.cohere_api_key}",
+                "Content-Type": "application/json"
+            }
+            payload = {
+                "model": "embed-english-light-v3.0",
+                "texts": [career_text],
+                "input_type": "search_document"
+            }
+            
+            async with httpx.AsyncClient() as client:
+                res = await client.post(url, headers=headers, json=payload)
+                res.raise_for_status()
+                embeddings = res.json()["embeddings"]
+                return embeddings[0] if embeddings else self._generate_fallback_embedding(career_text)
+                
+        except Exception as e:
+            logger.error(f"Failed to generate career embedding: {e}")
+            # Return fallback embedding immediately to avoid cascading failures
+            return self._generate_fallback_embedding(career_text)
+    
+    def _calculate_embedding_similarity(self, embedding1: List[float], embedding2: List[float]) -> float:
+        """Calculate cosine similarity between embeddings"""
+        if not embedding1 or not embedding2:
+            return 0.0
+        
+        min_length = min(len(embedding1), len(embedding2))
+        if min_length == 0:
+            return 0.0
+        
+        dot_product = sum(embedding1[i] * embedding2[i] for i in range(min_length))
+        magnitude1 = sum(val ** 2 for val in embedding1[:min_length]) ** 0.5
+        magnitude2 = sum(val ** 2 for val in embedding2[:min_length]) ** 0.5
+        
+        if magnitude1 == 0 or magnitude2 == 0:
+            return 0.0
+        
+        return dot_product / (magnitude1 * magnitude2)
+    
+    def _calculate_skill_match(self, user_skills: List[str], career_skills: str) -> float:
+        """Calculate skill match between user and career"""
+        if not user_skills or not career_skills:
+            return 0.0
+        
+        career_skill_list = [skill.strip().lower() for skill in career_skills.split(',')]
+        user_skill_list = [skill.lower() for skill in user_skills]
+        
+        matches = sum(1 for skill in user_skill_list if any(skill in career_skill for career_skill in career_skill_list))
+        return matches / len(user_skill_list) if user_skill_list else 0.0
+    
+    def _calculate_interest_match(self, user_interests: List[str], career_text: str) -> float:
+        """Calculate interest match between user and career"""
+        if not user_interests:
+            return 0.0
+        
+        career_lower = career_text.lower()
+        matches = sum(1 for interest in user_interests if interest.lower() in career_lower)
+        return matches / len(user_interests) if user_interests else 0.0
+    
+    def _generate_matching_reasons(self, user_profile: Dict, career: pd.Series, similarity: float) -> List[str]:
+        """Generate reasons why this career matches the user"""
+        reasons = []
+        
+        # Skill-based reasons
+        if user_profile['skills']:
+            skill_match = self._calculate_skill_match(user_profile['skills'], career.get('top_skills', ''))
+            if skill_match > 0.3:
+                reasons.append(f"Your skills align well with this role ({skill_match:.1%} match)")
+        
+        # Interest-based reasons
+        if user_profile['interests']:
+            interest_match = self._calculate_interest_match(user_profile['interests'], str(career))
+            if interest_match > 0.3:
+                reasons.append(f"Your interests match this career path ({interest_match:.1%} match)")
+        
+        # Work preference reasons
+        work_prefs = user_profile['work_preferences']
+        if work_prefs.get('team_size') == 'small' and 'collaboration' in str(career).lower():
+            reasons.append("You prefer small teams and this role offers close collaboration")
+        
+        # Learning style reasons
+        if user_profile['learning_style'] == 'hands_on_practical' and 'hands-on' in str(career).lower():
+            reasons.append("Your hands-on learning style fits this practical role")
+        
+        # Career goal reasons
+        if 'leadership' in user_profile['career_goals'] and 'leadership' in str(career).lower():
+            reasons.append("This role offers leadership opportunities aligned with your goals")
+        
+        return reasons if reasons else ["This role matches your overall profile and interests"]
+    
+    def _get_basic_career_matches(self, answers: List[int], top_k: int = 5) -> List[Dict]:
+        """Fallback to basic RIASEC matching"""
+        # Convert answers to RIASEC vector
+        user_vec = self.answers_to_vec(answers)
+        
+        # Calculate similarity with career data
+        similarities = []
+        
+        for _, career in self.career_data.iterrows():
+            # Create career vector from RIASEC scores
+            career_vec = np.array([
+                career.get("realistic", 0),
+                career.get("investigative", 0),
+                career.get("artistic", 0),
+                career.get("social", 0),
+                career.get("enterprising", 0),
+                career.get("conventional", 0)
+            ])
+            
+            # Normalize career vector
+            norm = np.linalg.norm(career_vec)
+            if norm > 0:
+                career_vec = career_vec / norm
+            
+            # Calculate cosine similarity
+            similarity = np.dot(user_vec, career_vec)
+            similarities.append({
+                "title": career["title"],
+                "similarity": similarity,
+                "salary_low": career.get("salary_low", 0),
+                "salary_high": career.get("salary_high", 0),
+                "growth_pct": career.get("growth_pct", 0),
+                "top_skills": career.get("top_skills", ""),
+                "day_in_life": career.get("day_in_life", "")
+            })
+        
+        # Sort by similarity and return top matches
+        similarities.sort(key=lambda x: x["similarity"], reverse=True)
+        return similarities[:top_k]
+    
+    def _generate_fallback_embedding(self, text: str) -> List[float]:
+        """Generate fallback embedding based on text characteristics"""
+        embedding = [0.0] * 384  # Cohere embedding size
+        
+        # Basic text analysis
+        words = text.lower().split()
+        char_count = len(text)
+        word_count = len(words)
+        
+        # Technical indicators
+        technical_terms = ['api', 'database', 'algorithm', 'function', 'class', 'method', 'variable', 'loop', 'condition', 'error']
+        framework_terms = ['react', 'python', 'javascript', 'docker', 'kubernetes', 'aws', 'azure', 'node', 'express', 'fastapi']
+        learning_terms = ['learn', 'understand', 'practice', 'example', 'tutorial', 'guide', 'step', 'process', 'method']
+        
+        # Calculate technical density
+        technical_score = sum(1 for word in words if word in technical_terms) / max(word_count, 1)
+        framework_score = sum(1 for word in words if word in framework_terms) / max(word_count, 1)
+        learning_score = sum(1 for word in words if word in learning_terms) / max(word_count, 1)
+        
+        # Set embedding values based on characteristics
+        embedding[0] = min(technical_score, 1.0)
+        embedding[1] = min(framework_score, 1.0)
+        embedding[2] = min(learning_score, 1.0)
+        embedding[3] = min(char_count / 1000, 1.0)
+        embedding[4] = min(word_count / 100, 1.0)
+        
+        # Add some randomness for uniqueness
+        import random
+        random.seed(hash(text) % 10000)
+        for i in range(5, 384):
+            embedding[i] = random.uniform(-0.1, 0.1)
+        
+        return embedding
+    
+    def get_career_roadmap(self, career_title: str) -> Dict:
+        """Get detailed career roadmap for a specific career"""
+        # First check if we have a predefined roadmap
+        if career_title in self.career_roadmaps:
+            return self.career_roadmaps[career_title]
+        
+        # If not, find the closest match
+        best_match = None
+        best_similarity = 0
+        
+        for title in self.career_roadmaps.keys():
+            similarity = self._calculate_title_similarity(career_title, title)
+            if similarity > best_similarity:
+                best_similarity = similarity
+                best_match = title
+        
+        if best_match and best_similarity > 0.7:
+            return self.career_roadmaps[best_match]
+        
+        # Return a generic roadmap if no good match found
+        return self._create_generic_roadmap(career_title)
+    
     def _calculate_title_similarity(self, title1: str, title2: str) -> float:
-        """Calculate similarity between two job titles"""
+        """Calculate similarity between two career titles"""
         words1 = set(title1.lower().split())
         words2 = set(title2.lower().split())
         
@@ -454,77 +571,252 @@ class CareerMatcher:
         union = words1.union(words2)
         
         return len(intersection) / len(union)
-
-    def top_matches(self, answers: List[int], k: int = 5) -> List[Dict]:
-        """Find top k career matches based on quiz answers (legacy method)"""
-        return self.enhanced_top_matches(answers, k)
-
-    def get_quiz_questions(self) -> List[Dict]:
-        """Get the 10 career quiz questions"""
-        questions = [
-            {
-                "id": 0,
-                "question": "Repairing or assembling mechanical things",
-                "category": "Realistic",
-                "description": "Rate how much you enjoy working with tools, machines, or physical systems"
+    
+    def _create_generic_roadmap(self, career_title: str) -> Dict:
+        """Create a generic roadmap for any career"""
+        return {
+            "entry_level": {
+                "title": f"Junior {career_title}",
+                "skills": ["Basic skills", "Industry knowledge", "Communication"],
+                "courses": ["Fundamentals", "Industry Basics", "Communication Skills"],
+                "duration": "6-12 months",
+                "salary_range": "$50,000 - $70,000"
             },
-            {
-                "id": 1,
-                "question": "Solving complex scientific or mathematical problems",
-                "category": "Investigative",
-                "description": "Rate how much you enjoy analyzing data, conducting research, or solving puzzles"
+            "mid_level": {
+                "title": career_title,
+                "skills": ["Advanced skills", "Specialization", "Leadership"],
+                "courses": ["Advanced Training", "Specialization", "Leadership Skills"],
+                "duration": "2-4 years",
+                "salary_range": "$70,000 - $120,000"
             },
-            {
-                "id": 2,
-                "question": "Creating art, graphics, music, or creative writing",
-                "category": "Artistic",
-                "description": "Rate how much you enjoy expressing creativity and imagination"
-            },
-            {
-                "id": 3,
-                "question": "Teaching, counseling, or helping people directly",
-                "category": "Social",
-                "description": "Rate how much you enjoy working with and helping others"
-            },
-            {
-                "id": 4,
-                "question": "Leading teams and persuading others to a vision",
-                "category": "Enterprising",
-                "description": "Rate how much you enjoy taking charge and influencing others"
-            },
-            {
-                "id": 5,
-                "question": "Organizing information, spreadsheets, or records",
-                "category": "Conventional",
-                "description": "Rate how much you enjoy working with data and following procedures"
-            },
-            {
-                "id": 6,
-                "question": "Working outdoors or with your hands",
-                "category": "Realistic",
-                "description": "Rate how much you enjoy physical work and outdoor activities"
-            },
-            {
-                "id": 7,
-                "question": "Designing experiments or digging into data patterns",
-                "category": "Investigative",
-                "description": "Rate how much you enjoy research and analytical work"
-            },
-            {
-                "id": 8,
-                "question": "Performing or presenting to an audience",
-                "category": "Artistic/Social",
-                "description": "Rate how much you enjoy public speaking and performance"
-            },
-            {
-                "id": 9,
-                "question": "Planning budgets, processes, or detailed procedures",
-                "category": "Conventional/Enterprising",
-                "description": "Rate how much you enjoy planning and organizing"
+            "senior_level": {
+                "title": f"Senior {career_title}",
+                "skills": ["Expertise", "Strategic thinking", "Mentoring"],
+                "courses": ["Expert Training", "Strategic Planning", "Mentoring Skills"],
+                "duration": "5+ years",
+                "salary_range": "$120,000 - $200,000"
             }
-        ]
-        return questions
+        }
+    
+    # AI-Powered Methods
+    async def generate_ai_roadmap(self, career_title: str, user_skills: Optional[List[str]] = None) -> Dict:
+        """Generate AI-powered detailed roadmap for any career"""
+        try:
+            prompt = f"""
+            Create a detailed career roadmap for {career_title} with three levels:
+            1. Entry Level (6-12 months)
+            2. Mid Level (2-3 years) 
+            3. Senior Level (5+ years)
+            
+            For each level include:
+            - Title
+            - Required skills
+            - Recommended courses
+            - Duration
+            - Salary range
+            
+            User's current skills: {user_skills or []}
+            
+            Return as JSON format.
+            """
+            
+            response = await self._call_groq(prompt)
+            return json.loads(response)
+            
+        except Exception as e:
+            logger.error(f"Error generating AI roadmap: {e}")
+            return self._create_generic_roadmap(career_title)
+    
+    async def generate_interview_preparation(self, career_title: str) -> Dict:
+        """Generate interview preparation content for a career"""
+        try:
+            prompt = f"""
+            Create interview preparation guide for {career_title} position:
+            
+            Include:
+            1. Common interview questions
+            2. Technical assessment tips
+            3. Behavioral questions
+            4. Portfolio recommendations
+            5. Salary negotiation tips
+            
+            Return as JSON format.
+            """
+            
+            response = await self._call_groq(prompt)
+            return json.loads(response)
+            
+        except Exception as e:
+            logger.error(f"Error generating interview prep: {e}")
+            return self._get_fallback_interview_prep(career_title)
+    
+    async def generate_market_insights(self, career_title: str) -> Dict:
+        """Generate market insights for a career"""
+        try:
+            prompt = f"""
+            Provide market insights for {career_title} career including:
+            1. Current demand
+            2. Salary trends
+            3. Required skills
+            4. Industry outlook
+            5. Growth opportunities
+            
+            Return as JSON format.
+            """
+            
+            response = await self._call_groq(prompt)
+            return json.loads(response)
+            
+        except Exception as e:
+            logger.error(f"Error generating market insights: {e}")
+            return self._get_fallback_market_insights(career_title)
+    
+    async def generate_learning_plan(self, career_title: str, user_skills: Optional[List[str]] = None) -> Dict:
+        """Generate personalized learning plan for a career"""
+        try:
+            prompt = f"""
+            Create a personalized learning plan for {career_title} career:
+            
+            User's current skills: {user_skills or []}
+            
+            Include:
+            1. Skill gaps analysis
+            2. Learning priorities
+            3. Recommended courses
+            4. Timeline
+            5. Milestones
+            
+            Return as JSON format.
+            """
+            
+            response = await self._call_groq(prompt)
+            return json.loads(response)
+            
+        except Exception as e:
+            logger.error(f"Error generating learning plan: {e}")
+            return self._get_fallback_learning_plan()
+    
+    async def generate_comprehensive_career_analysis(
+        self, 
+        answers: List[int], 
+        user_skills: Optional[List[str]] = None
+    ) -> Dict:
+        """Generate comprehensive career analysis from quiz answers"""
+        try:
+            # Get career matches using embedding-based matching
+            career_matches = await self.get_career_matches(answers, user_skills=user_skills, top_k=3)
+            
+            if not career_matches:
+                return {"error": "No career matches found"}
+            
+            top_career = career_matches[0]["title"]
+            
+            # Generate AI-powered content for top career
+            ai_roadmap = await self.generate_ai_roadmap(top_career, user_skills)
+            interview_prep = await self.generate_interview_preparation(top_career)
+            market_insights = await self.generate_market_insights(top_career)
+            learning_plan = await self.generate_learning_plan(top_career, user_skills)
+            
+            return {
+                "career_matches": career_matches,
+                "top_career": top_career,
+                "ai_roadmap": ai_roadmap,
+                "interview_preparation": interview_prep,
+                "market_insights": market_insights,
+                "learning_plan": learning_plan,
+                "analysis_timestamp": str(pd.Timestamp.now())
+            }
+            
+        except Exception as e:
+            logger.error(f"Error generating comprehensive analysis: {e}")
+            return {"error": f"Analysis failed: {str(e)}"}
+    
+    async def _call_groq(self, prompt: str) -> str:
+        """Call Groq API for AI generation"""
+        try:
+            url = "https://api.groq.com/openai/v1/chat/completions"
+            headers = {
+                "Authorization": f"Bearer {self.groq_api_key}",
+                "Content-Type": "application/json"
+            }
+            payload = {
+                "model": "llama3-8b-8192",
+                "messages": [{"role": "user", "content": prompt}],
+                "temperature": 0.7,
+                "stream": False
+            }
+            
+            async with httpx.AsyncClient() as client:
+                res = await client.post(url, headers=headers, json=payload)
+                res.raise_for_status()
+                return res.json()["choices"][0]["message"]["content"]
+        except Exception as e:
+            logger.error(f"Groq API call failed: {e}")
+            return "AI service temporarily unavailable"
+    
+    # Fallback methods
+    def _get_fallback_interview_prep(self, career_title: str) -> Dict:
+        """Fallback interview preparation"""
+        return {
+            "common_questions": [
+                "Tell me about yourself",
+                "Why do you want this position?",
+                "What are your strengths and weaknesses?",
+                "Where do you see yourself in 5 years?"
+            ],
+            "technical_tips": [
+                "Practice coding problems",
+                "Review fundamental concepts",
+                "Prepare for system design questions"
+            ],
+            "behavioral_questions": [
+                "Describe a challenging project",
+                "How do you handle conflicts?",
+                "Tell me about a time you failed"
+            ],
+            "portfolio_tips": [
+                "Showcase relevant projects",
+                "Include code samples",
+                "Demonstrate problem-solving skills"
+            ],
+            "salary_negotiation": [
+                "Research market rates",
+                "Highlight your value",
+                "Be prepared to negotiate"
+            ]
+        }
+    
+    def _get_fallback_market_insights(self, career_title: str) -> Dict:
+        """Fallback market insights"""
+        return {
+            "current_demand": "High demand for tech roles",
+            "salary_trends": "Salaries continue to rise",
+            "required_skills": ["Technical skills", "Communication", "Problem solving"],
+            "industry_outlook": "Positive growth expected",
+            "growth_opportunities": "Many advancement opportunities available"
+        }
+    
+    def _get_fallback_learning_plan(self) -> Dict:
+        """Fallback learning plan"""
+        return {
+            "skill_gaps": ["Technical skills", "Industry knowledge"],
+            "learning_priorities": [
+                "Master core technologies",
+                "Build practical projects",
+                "Network with professionals"
+            ],
+            "recommended_courses": [
+                "Fundamentals course",
+                "Advanced specialization",
+                "Industry certification"
+            ],
+            "timeline": "6-12 months",
+            "milestones": [
+                "Complete fundamentals",
+                "Build portfolio",
+                "Apply for positions"
+            ]
+        }
 
-# Initialize global career matcher instance
-matcher = CareerMatcher()
-logger.info(f"Career matcher initialized with {len(matcher.df)} careers") 
+# Global instance for easy access
+matcher = CareerMatcher() 

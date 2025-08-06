@@ -1,11 +1,12 @@
 """
-Unified Career System - Complete career planning with roadmap, coaching, and recommendations
+Unified Career System - Comprehensive career roadmap generation
+Handles main career page functionality with target roles, interests, and skills
 """
 
 import asyncio
 import json
 import os
-import uuid
+import httpx
 from datetime import datetime
 from typing import Dict, List, Optional, Any
 from pathlib import Path
@@ -13,42 +14,78 @@ from pathlib import Path
 import pandas as pd
 import numpy as np
 from loguru import logger
-from groq import Groq
+from dotenv import load_dotenv
+
+# Load environment variables
+load_dotenv()
 
 from schemas import (
-    UnifiedRoadmapRequest, UnifiedRoadmapResponse, InterviewPrepRequest, InterviewPrepResponse,
-    CareerGuidanceRequest, CareerGuidanceResponse,
-    CareerDiscoveryRequest, CareerDiscoveryResponse
+    UnifiedRoadmapRequest, UnifiedRoadmapResponse, InterviewPrepRequest, InterviewPrepResponse
 )
 
 class UnifiedCareerSystem:
     """
-    Unified career system that combines:
-    1. Career Roadmap Generation (with/without target role)
-    2. AI Career Coaching and Interview Preparation
-    3. Market Insights and Learning Recommendations
-    4. Skill Gap Analysis and Learning Paths
-    5. Career Discovery and Recommendations
+    Unified career system for comprehensive roadmap generation:
+    1. Generate roadmaps with or without target role
+    2. Provide detailed learning paths and skill development
+    3. Include interview preparation and market insights
     """
     
     def __init__(self):
-        self.client = Groq(api_key=os.getenv("GROQ_API_KEY"))
+        # Initialize API helpers
+        self.cohere_api_key = os.getenv("COHERE_API_KEY")
+        self.groq_api_key = os.getenv("GROQ_API_KEY")
         self.data_path = Path(__file__).parent / "data"
         
-        # Load career data and micro-lessons
+        # Load career data and roadmaps
         self.career_data = self._load_career_data()
+        self.career_roadmaps = self._load_career_roadmaps()
         self.micro_lessons = self._load_micro_lessons()
         
-        # Cache for roadmaps
-        self.roadmap_cache = self._load_cache("roadmap_cache.json")
+        # Create career mapping for better matching
+        self.career_mapping = self._create_career_mapping()
         
-        # Coaching sessions store
-        self.coaching_sessions = {}
-        
-        logger.info("UnifiedCareerSystem initialized successfully")
+        logger.info("UnifiedCareerSystem initialized successfully with embedding capabilities")
+    
+    async def cohere_embed(self, batch: List[str]) -> List[List[float]]:
+        """Generate embeddings using Cohere API"""
+        url = "https://api.cohere.ai/v1/embed"
+        headers = {
+            "Authorization": f"Bearer {self.cohere_api_key}",
+            "Content-Type": "application/json"
+        }
+        payload = {
+            "model": "embed-english-light-v3.0",
+            "texts": batch,
+            "input_type": "search_document"
+        }
+
+        async with httpx.AsyncClient() as client:
+            res = await client.post(url, headers=headers, json=payload)
+            res.raise_for_status()
+            return res.json()["embeddings"]
+
+    async def call_groq(self, messages: List[Dict]) -> str:
+        """Call Groq API with optimized model"""
+        url = "https://api.groq.com/openai/v1/chat/completions"
+        headers = {
+            "Authorization": f"Bearer {self.groq_api_key}",
+            "Content-Type": "application/json"
+        }
+        payload = {
+            "model": "llama3-8b-8192",  # Lightweight model for best performance
+            "messages": messages,
+            "temperature": 0.7,
+            "stream": False
+        }
+
+        async with httpx.AsyncClient() as client:
+            res = await client.post(url, headers=headers, json=payload)
+            res.raise_for_status()
+            return res.json()["choices"][0]["message"]["content"]
     
     def _load_career_data(self) -> pd.DataFrame:
-        """Load career data from processed CSV"""
+        """Load career data from CSV"""
         try:
             df = pd.read_csv(self.data_path / "onet_bls_trimmed.csv")
             logger.info(f"Loaded {len(df)} careers")
@@ -56,6 +93,17 @@ class UnifiedCareerSystem:
         except FileNotFoundError:
             logger.warning("Career data not found, using sample data")
             return self._create_sample_career_data()
+    
+    def _load_career_roadmaps(self) -> Dict:
+        """Load career roadmaps from JSON"""
+        try:
+            with open(self.data_path / "career_roadmaps.json", "r") as f:
+                roadmaps = json.load(f)
+                logger.info(f"Loaded {len(roadmaps)} career roadmaps")
+                return roadmaps
+        except FileNotFoundError:
+            logger.warning("Career roadmaps not found, using default")
+            return self._create_default_roadmaps()
     
     def _load_micro_lessons(self) -> Dict:
         """Load micro-lessons data"""
@@ -65,21 +113,39 @@ class UnifiedCareerSystem:
         except FileNotFoundError:
             return self._create_default_micro_lessons()
     
-    def _load_cache(self, filename: str) -> Dict:
-        """Load cache file"""
-        try:
-            with open(self.data_path / filename, "r") as f:
-                return json.load(f)
-        except FileNotFoundError:
-            return {}
-    
-    def _save_cache(self, data: Dict, filename: str):
-        """Save cache to file"""
-        try:
-            with open(self.data_path / filename, "w") as f:
-                json.dump(data, f, indent=2)
-        except Exception as e:
-            logger.error(f"Error saving cache: {e}")
+    def _create_career_mapping(self) -> Dict:
+        """Create mapping between career data and roadmaps for better matching"""
+        mapping = {}
+        
+        # Map career data titles to roadmap titles
+        for _, career in self.career_data.iterrows():
+            career_title = career['title']
+            
+            # Find best matching roadmap
+            best_match = None
+            best_similarity = 0
+            
+            for roadmap_title in self.career_roadmaps.keys():
+                similarity = self._calculate_title_similarity(career_title, roadmap_title)
+                if similarity > best_similarity:
+                    best_similarity = similarity
+                    best_match = roadmap_title
+            
+            if best_match and best_similarity > 0.3:  # Threshold for matching
+                mapping[career_title] = {
+                    'roadmap_title': best_match,
+                    'similarity': best_similarity,
+                    'has_roadmap': True
+                }
+            else:
+                mapping[career_title] = {
+                    'roadmap_title': None,
+                    'similarity': 0,
+                    'has_roadmap': False
+                }
+        
+        logger.info(f"Created career mapping for {len(mapping)} careers")
+        return mapping
     
     def _create_sample_career_data(self) -> pd.DataFrame:
         """Create sample career data for testing"""
@@ -92,22 +158,44 @@ class UnifiedCareerSystem:
             'day_in_life': ['Develop software applications', 'Analyze data and build ML models', 'Manage infrastructure', 'Build user interfaces', 'Develop server-side applications']
         })
     
+    def _create_default_roadmaps(self) -> Dict:
+        """Create default career roadmaps"""
+        return {
+            "Software Developer": {
+                "entry_level": {
+                    "title": "Junior Developer",
+                    "skills": ["Python", "JavaScript", "Git", "Basic Algorithms"],
+                    "courses": ["Python Fundamentals", "Web Development Basics", "Version Control"],
+                    "duration": "6-12 months",
+                    "salary_range": "$60,000 - $80,000"
+                },
+                "mid_level": {
+                    "title": "Software Developer",
+                    "skills": ["Full-Stack Development", "Database Design", "API Development", "Testing"],
+                    "courses": ["Advanced Web Development", "Database Systems", "API Design", "Testing Strategies"],
+                    "duration": "2-3 years",
+                    "salary_range": "$80,000 - $120,000"
+                },
+                "senior_level": {
+                    "title": "Senior Developer",
+                    "skills": ["System Architecture", "Team Leadership", "Performance Optimization", "DevOps"],
+                    "courses": ["System Design", "Leadership Skills", "DevOps Practices", "Advanced Algorithms"],
+                    "duration": "5+ years",
+                    "salary_range": "$120,000 - $180,000"
+                }
+            }
+        }
+    
     def _create_default_micro_lessons(self) -> Dict:
         """Create default micro-lessons"""
         return {
             "programming": [
                 {"title": "Python Basics", "description": "Learn Python fundamentals", "duration": 30, "skills": ["python"]},
-                {"title": "JavaScript Fundamentals", "description": "Learn JavaScript basics", "duration": 30, "skills": ["javascript"]},
-                {"title": "React Development", "description": "Build React applications", "duration": 45, "skills": ["react", "javascript"]},
-                {"title": "API Development", "description": "Build REST APIs", "duration": 45, "skills": ["api", "python"]}
+                {"title": "JavaScript Fundamentals", "description": "Learn JavaScript basics", "duration": 30, "skills": ["javascript"]}
             ],
             "data_science": [
-                {"title": "Machine Learning Intro", "description": "ML fundamentals", "duration": 60, "skills": ["ml", "python"]},
-                {"title": "Data Analysis", "description": "Data analysis techniques", "duration": 45, "skills": ["statistics", "python"]}
-            ],
-            "devops": [
-                {"title": "Docker Basics", "description": "Containerization with Docker", "duration": 30, "skills": ["docker"]},
-                {"title": "AWS Fundamentals", "description": "Cloud computing with AWS", "duration": 45, "skills": ["aws", "cloud"]}
+                {"title": "Data Analysis", "description": "Learn data analysis basics", "duration": 45, "skills": ["python", "pandas"]},
+                {"title": "Machine Learning", "description": "Introduction to ML", "duration": 60, "skills": ["python", "scikit-learn"]}
             ]
         }
     
@@ -119,38 +207,230 @@ class UnifiedCareerSystem:
         user_interests: Optional[List[str]] = None
     ) -> Dict:
         """
-        Generate unified roadmap with all features:
-        1. Target role recommendation (if not provided)
-        2. Detailed career roadmap
-        3. Interview preparation
-        4. Market insights
-        5. Learning recommendations
-        6. Career coaching advice
+        Generate comprehensive unified roadmap using embedding-based matching.
+        Works with both quiz results and direct user input.
         """
-        
         try:
-            # Step 1: Recommend target role if not provided
+            # If no target role provided, use embedding-based recommendation
             if not target_role:
-                target_role = await self._recommend_target_role(user_profile, user_skills, user_interests)
+                target_role = await self._recommend_target_role_embedding(
+                    user_profile, user_skills, user_interests
+                )
             
-            # Step 2: Generate comprehensive roadmap
+            # Get comprehensive career analysis using embeddings
+            career_analysis = await self._get_embedding_based_career_analysis(
+                target_role, user_skills, user_interests, user_profile
+            )
+            
+            return career_analysis
+            
+        except Exception as e:
+            logger.error(f"Unified roadmap generation failed: {e}")
+            return self._get_fallback_roadmap(target_role, user_skills, user_interests)
+    
+    async def _recommend_target_role_embedding(
+        self, 
+        user_profile: Optional[Dict] = None,
+        user_skills: Optional[List[str]] = None,
+        user_interests: Optional[List[str]] = None
+    ) -> str:
+        """Recommend target role using embedding-based matching"""
+        try:
+            # Create user profile for embedding
+            user_profile_text = self._create_user_profile_text(user_profile, user_skills, user_interests)
+            
+            # Generate user embedding
+            user_embedding = await self._generate_user_embedding(user_profile_text)
+            
+            # Find best matching career
+            best_career = await self._find_best_career_match(user_embedding, user_skills, user_interests)
+            
+            return best_career
+            
+        except Exception as e:
+            logger.error(f"Embedding-based role recommendation failed: {e}")
+            return "Software Engineer"  # Fallback
+    
+    def _create_user_profile_text(
+        self, 
+        user_profile: Optional[Dict], 
+        user_skills: Optional[List[str]], 
+        user_interests: Optional[List[str]]
+    ) -> str:
+        """Create comprehensive user profile text for embedding"""
+        profile_parts = []
+        
+        if user_profile:
+            profile_parts.append(f"User Profile: {user_profile}")
+        
+        if user_skills:
+            profile_parts.append(f"Skills: {', '.join(user_skills)}")
+        
+        if user_interests:
+            profile_parts.append(f"Interests: {', '.join(user_interests)}")
+        
+        if not profile_parts:
+            profile_parts.append("General user seeking career guidance")
+        
+        return " | ".join(profile_parts)
+    
+    async def _generate_user_embedding(self, user_profile_text: str) -> List[float]:
+        """Generate embedding for user profile using Cohere"""
+        try:
+            embeddings = await self.cohere_embed([user_profile_text])
+            return embeddings[0] if embeddings else self._generate_fallback_embedding(user_profile_text)
+        except Exception as e:
+            logger.error(f"Failed to generate user embedding: {e}")
+            return self._generate_fallback_embedding(user_profile_text)
+    
+    async def _find_best_career_match(
+        self, 
+        user_embedding: List[float], 
+        user_skills: Optional[List[str]], 
+        user_interests: Optional[List[str]]
+    ) -> str:
+        """Find best career match using embeddings"""
+        best_career = None
+        best_similarity = 0
+        
+        for _, career in self.career_data.iterrows():
+            try:
+                # Create career profile text
+                career_text = f"""
+                Career: {career['title']}
+                Skills: {career.get('top_skills', '')}
+                Day in Life: {career.get('day_in_life', '')}
+                Salary Range: ${career.get('salary_low', 0)} - ${career.get('salary_high', 0)}
+                Growth: {career.get('growth_pct', 0)}%
+                """
+                
+                # Generate career embedding
+                career_embedding = await self._generate_career_embedding(career_text)
+                
+                # Calculate similarity
+                similarity = self._calculate_embedding_similarity(user_embedding, career_embedding)
+                
+                # Add skill and interest matching
+                skill_match = self._calculate_skill_match(user_skills or [], career.get('top_skills', ''))
+                interest_match = self._calculate_interest_match(user_interests or [], career_text)
+                
+                # Weighted similarity score
+                weighted_similarity = (similarity * 0.5) + (skill_match * 0.3) + (interest_match * 0.2)
+                
+                if weighted_similarity > best_similarity:
+                    best_similarity = weighted_similarity
+                    best_career = career['title']
+                    
+            except Exception as e:
+                logger.error(f"Failed to calculate similarity for {career['title']}: {e}")
+                continue
+        
+        return best_career or "Software Engineer"
+    
+    async def _generate_career_embedding(self, career_text: str) -> List[float]:
+        """Generate embedding for career using Cohere"""
+        try:
+            embeddings = await self.cohere_embed([career_text])
+            return embeddings[0] if embeddings else self._generate_fallback_embedding(career_text)
+        except Exception as e:
+            logger.error(f"Failed to generate career embedding: {e}")
+            return self._generate_fallback_embedding(career_text)
+    
+    def _calculate_embedding_similarity(self, embedding1: List[float], embedding2: List[float]) -> float:
+        """Calculate cosine similarity between embeddings"""
+        if not embedding1 or not embedding2:
+            return 0.0
+        
+        min_length = min(len(embedding1), len(embedding2))
+        if min_length == 0:
+            return 0.0
+        
+        dot_product = sum(embedding1[i] * embedding2[i] for i in range(min_length))
+        magnitude1 = sum(val ** 2 for val in embedding1[:min_length]) ** 0.5
+        magnitude2 = sum(val ** 2 for val in embedding2[:min_length]) ** 0.5
+        
+        if magnitude1 == 0 or magnitude2 == 0:
+            return 0.0
+        
+        return dot_product / (magnitude1 * magnitude2)
+    
+    def _calculate_skill_match(self, user_skills: List[str], career_skills: str) -> float:
+        """Calculate skill match between user and career"""
+        if not user_skills or not career_skills:
+            return 0.0
+        
+        career_skill_list = [skill.strip().lower() for skill in career_skills.split(',')]
+        user_skill_list = [skill.lower() for skill in user_skills]
+        
+        matches = sum(1 for skill in user_skill_list if any(skill in career_skill for career_skill in career_skill_list))
+        return matches / len(user_skill_list) if user_skill_list else 0.0
+    
+    def _calculate_interest_match(self, user_interests: List[str], career_text: str) -> float:
+        """Calculate interest match between user and career"""
+        if not user_interests:
+            return 0.0
+        
+        career_lower = career_text.lower()
+        matches = sum(1 for interest in user_interests if interest.lower() in career_lower)
+        return matches / len(user_interests) if user_interests else 0.0
+    
+    def _generate_fallback_embedding(self, text: str) -> List[float]:
+        """Generate fallback embedding based on text characteristics"""
+        embedding = [0.0] * 384  # Cohere embedding size
+        
+        # Basic text analysis
+        words = text.lower().split()
+        char_count = len(text)
+        word_count = len(words)
+        
+        # Technical indicators
+        technical_terms = ['api', 'database', 'algorithm', 'function', 'class', 'method', 'variable', 'loop', 'condition', 'error']
+        framework_terms = ['react', 'python', 'javascript', 'docker', 'kubernetes', 'aws', 'azure', 'node', 'express', 'fastapi']
+        learning_terms = ['learn', 'understand', 'practice', 'example', 'tutorial', 'guide', 'step', 'process', 'method']
+        
+        # Calculate technical density
+        technical_score = sum(1 for word in words if word in technical_terms) / max(word_count, 1)
+        framework_score = sum(1 for word in words if word in framework_terms) / max(word_count, 1)
+        learning_score = sum(1 for word in words if word in learning_terms) / max(word_count, 1)
+        
+        # Set embedding values based on characteristics
+        embedding[0] = min(technical_score, 1.0)
+        embedding[1] = min(framework_score, 1.0)
+        embedding[2] = min(learning_score, 1.0)
+        embedding[3] = min(char_count / 1000, 1.0)
+        embedding[4] = min(word_count / 100, 1.0)
+        
+        # Add some randomness for uniqueness
+        import random
+        random.seed(hash(text) % 10000)
+        for i in range(5, 384):
+            embedding[i] = random.uniform(-0.1, 0.1)
+        
+        return embedding
+    
+    async def _get_embedding_based_career_analysis(
+        self,
+        target_role: str,
+        user_skills: Optional[List[str]] = None,
+        user_interests: Optional[List[str]] = None,
+        user_profile: Optional[Dict] = None
+    ) -> Dict:
+        """Get comprehensive career analysis using embedding-based matching"""
+        try:
+            # Get detailed roadmap
             roadmap = await self._generate_detailed_roadmap(target_role, user_skills, user_profile)
             
-            # Step 3: Generate interview preparation
+            # Generate AI-powered content
+            ai_roadmap = await self._generate_ai_roadmap(target_role, user_skills)
             interview_prep = await self._generate_interview_preparation(target_role, user_profile)
-            
-            # Step 4: Generate market insights
             market_insights = await self._generate_market_insights(target_role)
-            
-            # Step 5: Generate learning recommendations
             learning_plan = await self._generate_learning_plan(target_role, user_skills, user_profile)
             
-            # Step 6: Generate career coaching advice
-            coaching_advice = await self._generate_career_coaching_advice(target_role, user_profile)
-            
-            # Step 7: Calculate confidence and timeline
+            # Calculate confidence score
             confidence_score = self._calculate_confidence_score(user_skills, target_role)
-            timeline = self._create_timeline(roadmap, user_profile)
+            
+            # Generate matching reasons
+            matching_reasons = self._generate_matching_reasons(target_role, user_skills, user_interests)
             
             return {
                 "target_role": target_role,
@@ -158,512 +438,586 @@ class UnifiedCareerSystem:
                 "interview_preparation": interview_prep,
                 "market_insights": market_insights,
                 "learning_plan": learning_plan,
-                "coaching_advice": coaching_advice,
+                "coaching_advice": {
+                    "advice": "Focus on developing the skills outlined in the roadmap",
+                    "tips": matching_reasons,
+                    "next_steps": ["Start with foundational skills", "Build a portfolio", "Network in the field"]
+                },
                 "confidence_score": confidence_score,
-                "timeline": timeline,
+                "timeline": self._create_timeline(roadmap, user_profile),
                 "estimated_time_to_target": self._estimate_time_to_target(roadmap, user_profile)
             }
             
         except Exception as e:
-            logger.error(f"Error generating unified roadmap: {e}")
+            logger.error(f"Embedding-based career analysis failed: {e}")
             return self._get_fallback_roadmap(target_role, user_skills, user_interests)
     
-    async def _recommend_target_role(
+    def _generate_matching_reasons(
         self, 
-        user_profile: Optional[Dict] = None,
-        user_skills: Optional[List[str]] = None,
-        user_interests: Optional[List[str]] = None
-    ) -> str:
-        """Recommend target role using AI"""
+        target_role: str, 
+        user_skills: Optional[List[str]], 
+        user_interests: Optional[List[str]]
+    ) -> List[str]:
+        """Generate reasons why this role matches the user"""
+        reasons = []
         
-        prompt = f"""
-        Based on the following user profile, recommend the best target career role:
+        # Find career data for this role
+        career_data = None
+        for _, career in self.career_data.iterrows():
+            if career['title'].lower() == target_role.lower():
+                career_data = career
+                break
         
-        User Profile: {user_profile}
-        User Skills: {user_skills or []}
-        User Interests: {user_interests or []}
-        
-        Available roles: {list(self.career_data['title'].unique())}
-        
-        Consider:
-        1. Skill alignment with career requirements
-        2. Interest match with career focus
-        3. User experience level and career progression
-        4. Market demand and growth potential
-        5. Salary expectations and work-life balance
-        
-        Return only the exact job title from the available roles that best matches the user's profile.
-        """
-        
-        try:
-            response = await self._call_groq(prompt)
-            recommended_role = response.strip()
+        if career_data is not None:
+            # Skill-based reasons
+            if user_skills:
+                skill_match = self._calculate_skill_match(user_skills, career_data.get('top_skills', ''))
+                if skill_match > 0.3:
+                    reasons.append(f"Your skills align well with this role ({skill_match:.1%} match)")
             
-            # Validate the recommended role exists in our data
-            if recommended_role in self.career_data['title'].values:
-                return recommended_role
-            else:
-                # Find closest match
-                return self._find_closest_role(recommended_role)
-                
-        except Exception as e:
-            logger.error(f"Error recommending target role: {e}")
-            return "Software Developer"  # Default fallback
+            # Interest-based reasons
+            if user_interests:
+                interest_match = self._calculate_interest_match(user_interests, str(career_data))
+                if interest_match > 0.3:
+                    reasons.append(f"Your interests match this career path ({interest_match:.1%} match)")
+            
+            # Growth and salary reasons
+            growth_pct = career_data.get('growth_pct', 0)
+            if growth_pct > 10:
+                reasons.append(f"This role offers strong growth potential ({growth_pct}% projected growth)")
+            
+            salary_high = career_data.get('salary_high', 0)
+            if salary_high > 80000:
+                reasons.append(f"Competitive salary range with high earning potential")
+        
+        # Default reasons if no specific data
+        if not reasons:
+            reasons.extend([
+                "This role matches your overall profile and interests",
+                "Good alignment with current market demands",
+                "Strong potential for career advancement"
+            ])
+        
+        return reasons
+    
+    def _get_best_roadmap(self, target_role: str) -> Dict:
+        """Get the best matching roadmap for a target role"""
+        # First check if we have an exact match
+        if target_role in self.career_roadmaps:
+            return {
+                'roadmap': self.career_roadmaps[target_role],
+                'source': 'exact_match',
+                'similarity': 1.0
+            }
+        
+        # Check career mapping for best match
+        if target_role in self.career_mapping:
+            mapping = self.career_mapping[target_role]
+            if mapping['has_roadmap']:
+                roadmap_title = mapping['roadmap_title']
+                return {
+                    'roadmap': self.career_roadmaps[roadmap_title],
+                    'source': 'mapped_match',
+                    'similarity': mapping['similarity'],
+                    'original_title': target_role,
+                    'roadmap_title': roadmap_title
+                }
+        
+        # Find closest match in all roadmaps
+        best_match = None
+        best_similarity = 0
+        
+        for roadmap_title in self.career_roadmaps.keys():
+            similarity = self._calculate_title_similarity(target_role, roadmap_title)
+            if similarity > best_similarity:
+                best_similarity = similarity
+                best_match = roadmap_title
+        
+        if best_match and best_similarity > 0.5:
+            return {
+                'roadmap': self.career_roadmaps[best_match],
+                'source': 'similarity_match',
+                'similarity': best_similarity,
+                'original_title': target_role,
+                'roadmap_title': best_match
+            }
+        
+        # No good match found
+        return {
+            'roadmap': None,
+            'source': 'generated',
+            'similarity': 0
+        }
+    
+    # Removed old _recommend_target_role method - using _recommend_target_role_embedding instead
     
     async def _generate_detailed_roadmap(
         self, 
         target_role: str, 
         user_skills: Optional[List[str]] = None,
-        user_profile: Optional[Dict] = None
+        user_profile: Optional[Dict] = None,
+        roadmap_data: Optional[Dict] = None
     ) -> Dict:
-        """Generate detailed career roadmap with caching"""
-        
-        # Check cache first
-        cache_key = f"{target_role}_{hash(str(user_skills))}"
-        if cache_key in self.roadmap_cache:
-            return self.roadmap_cache[cache_key]
-        
-        # Get role data
-        role_data = self.career_data[self.career_data['title'] == target_role]
-        if role_data.empty:
-            roadmap = self._create_fallback_roadmap(target_role)
-        else:
-            data = role_data.iloc[0]
-            
-            # Generate roadmap using AI
-            roadmap = await self._generate_ai_roadmap(target_role, user_skills, data)
-        
-        # Cache the result
-        self.roadmap_cache[cache_key] = roadmap
-        self._save_cache(self.roadmap_cache, "roadmap_cache.json")
-        
-        return roadmap
-    
-    async def _generate_ai_roadmap(self, target_role: str, user_skills: Optional[List[str]], role_data: pd.Series) -> Dict:
-        """Generate AI-powered roadmap"""
-        
-        prompt = f"""
-        Create a detailed 3-level career roadmap for {target_role}:
-        
-        Role Information:
-        - Salary Range: ${role_data['salary_low']:,} - ${role_data['salary_high']:,}
-        - Growth Rate: {role_data['growth_pct']}%
-        - Required Skills: {role_data['top_skills']}
-        - Day in Life: {role_data['day_in_life']}
-        
-        User's Current Skills: {user_skills or []}
-        
-        Create roadmap with:
-        1. Foundational Level (Entry-level, 0-2 years)
-        2. Intermediate Level (Mid-career, 2-5 years)
-        3. Advanced Level (Senior/Expert, 5+ years)
-        
-        For each level include:
-        - Required skills and competencies
-        - Salary range
-        - Typical responsibilities and projects
-        - Learning objectives and milestones
-        - Duration estimate
-        - Key portfolio items and achievements
-        - Career advancement opportunities
-        
-        Return as JSON with structure:
-        {{
-            "levels": [
-                {{
-                    "name": "Foundational",
-                    "skills": ["skill1", "skill2"],
-                    "salary_range": {{"min": 50000, "max": 80000}},
-                    "responsibilities": ["resp1", "resp2"],
-                    "learning_objectives": ["obj1", "obj2"],
-                    "duration_months": 24,
-                    "portfolio_items": ["project1", "project2"],
-                    "advancement_opportunities": ["opportunity1", "opportunity2"]
-                }}
-            ]
-        }}
-        """
-        
+        """Generate detailed roadmap for target role"""
         try:
+            # Use roadmap data if available
+            if roadmap_data and roadmap_data.get('roadmap'):
+                roadmap = roadmap_data['roadmap']
+                logger.info(f"Using {roadmap_data['source']} roadmap for {target_role}")
+            else:
+                # Generate AI roadmap
+                roadmap = await self._generate_ai_roadmap(target_role, user_skills)
+                logger.info(f"Generated AI roadmap for {target_role}")
+            
+            # Add skill gap analysis
+            skill_gaps = self._analyze_skill_gaps(user_skills or [], roadmap)
+            roadmap["skill_gaps"] = skill_gaps
+            
+            # Add roadmap metadata
+            roadmap["metadata"] = {
+                "target_role": target_role,
+                "source": roadmap_data.get('source', 'generated') if roadmap_data else 'generated',
+                "similarity": roadmap_data.get('similarity', 0) if roadmap_data else 0,
+                "has_predefined_roadmap": roadmap_data.get('source') != 'generated' if roadmap_data else False
+            }
+            
+            return roadmap
+            
+        except Exception as e:
+            logger.error(f"Error generating detailed roadmap: {e}")
+            return self._create_fallback_roadmap(target_role)
+    
+    async def _generate_ai_roadmap(self, target_role: str, user_skills: Optional[List[str]]) -> Dict:
+        """Generate AI-powered roadmap"""
+        try:
+            prompt = f"""
+            Create a detailed career roadmap for {target_role} with three levels:
+            1. Entry Level (6-12 months)
+            2. Mid Level (2-3 years) 
+            3. Senior Level (5+ years)
+            
+            For each level include:
+            - Title
+            - Required skills
+            - Recommended courses
+            - Duration
+            - Salary range
+            
+            User's current skills: {user_skills or []}
+            
+            Return as JSON format.
+            """
+            
             response = await self._call_groq(prompt)
-            return json.loads(response)
+            
+            # If Groq call failed, return fallback
+            if not response:
+                return self._create_fallback_roadmap(target_role)
+            
+            # Try to extract JSON from response
+            try:
+                # Look for JSON in the response
+                start_idx = response.find('{')
+                end_idx = response.rfind('}') + 1
+                if start_idx != -1 and end_idx != 0:
+                    json_str = response[start_idx:end_idx]
+                    return json.loads(json_str)
+                else:
+                    # If no JSON found, return fallback
+                    return self._create_fallback_roadmap(target_role)
+            except json.JSONDecodeError:
+                # Fallback to structured response
+                return self._create_fallback_roadmap(target_role)
+            
         except Exception as e:
             logger.error(f"Error generating AI roadmap: {e}")
             return self._create_fallback_roadmap(target_role)
     
     async def _generate_interview_preparation(self, target_role: str, user_profile: Optional[Dict] = None) -> Dict:
-        """Generate comprehensive interview preparation"""
-        
-        prompt = f"""
-        Create comprehensive interview preparation guidance for {target_role}:
-        
-        User Profile: {user_profile}
-        
-        Include:
-        1. Common interview questions (technical and behavioral)
-        2. Technical skills to demonstrate
-        3. Behavioral questions and sample answers
-        4. Portfolio project suggestions
-        5. Interview tips and strategies
-        6. Salary negotiation advice
-        7. Company research tips
-        8. Follow-up strategies
-        
-        Return as JSON with these sections.
-        """
-        
+        """Generate interview preparation content"""
         try:
+            prompt = f"""
+            Create interview preparation guide for {target_role} position.
+            
+            Return a JSON object with these fields:
+            - common_questions: array of common interview questions
+            - technical_skills: array of technical skills to focus on
+            - behavioral_questions: array of behavioral questions
+            - portfolio_suggestions: array of portfolio recommendations
+            - interview_tips: array of interview tips
+            - salary_negotiation: array of salary negotiation tips
+            """
+            
             response = await self._call_groq(prompt)
-            return json.loads(response)
+            
+            # If Groq call failed, return fallback
+            if not response:
+                return self._get_fallback_interview_prep(target_role)
+            
+            # Try to extract JSON from response
+            try:
+                # Look for JSON in the response
+                start_idx = response.find('{')
+                end_idx = response.rfind('}') + 1
+                if start_idx != -1 and end_idx != 0:
+                    json_str = response[start_idx:end_idx]
+                    return json.loads(json_str)
+                else:
+                    # If no JSON found, create structured response
+                    return {
+                        "common_questions": [
+                            f"Tell me about your experience in {target_role}",
+                            "What are your strengths and weaknesses?",
+                            "Where do you see yourself in 5 years?"
+                        ],
+                        "technical_skills": ["Core skills", "Industry knowledge"],
+                        "behavioral_questions": [
+                            "Describe a challenging project you worked on",
+                            "How do you handle conflicts in a team?"
+                        ],
+                        "portfolio_suggestions": ["Create a portfolio", "Showcase your work"],
+                        "interview_tips": ["Research the company", "Practice common questions"],
+                        "salary_negotiation": ["Know your worth", "Research market rates"]
+                    }
+            except json.JSONDecodeError:
+                # Fallback to structured response
+                return {
+                    "common_questions": [
+                        f"Tell me about your experience in {target_role}",
+                        "What are your strengths and weaknesses?",
+                        "Where do you see yourself in 5 years?"
+                    ],
+                    "technical_skills": ["Core skills", "Industry knowledge"],
+                    "behavioral_questions": [
+                        "Describe a challenging project you worked on",
+                        "How do you handle conflicts in a team?"
+                    ],
+                    "portfolio_suggestions": ["Create a portfolio", "Showcase your work"],
+                    "interview_tips": ["Research the company", "Practice common questions"],
+                    "salary_negotiation": ["Know your worth", "Research market rates"]
+                }
+            
         except Exception as e:
-            logger.error(f"Error generating interview preparation: {e}")
+            logger.error(f"Error generating interview prep: {e}")
             return self._get_fallback_interview_prep(target_role)
     
     async def _generate_market_insights(self, target_role: str) -> Dict:
-        """Generate market insights and trends"""
-        
-        role_data = self.career_data[self.career_data['title'] == target_role]
-        if role_data.empty:
-            return {"error": "Role data not found"}
-        
-        data = role_data.iloc[0]
-        
-        prompt = f"""
-        Generate market insights for {target_role}:
-        
-        Current Data:
-        - Salary Range: ${data['salary_low']:,} - ${data['salary_high']:,}
-        - Growth Rate: {data['growth_pct']}%
-        - Required Skills: {data['top_skills']}
-        
-        Provide insights on:
-        1. Market demand and trends
-        2. Salary trends and negotiation tips
-        3. Required skills evolution
-        4. Industry outlook and opportunities
-        5. Geographic opportunities
-        6. Remote work trends
-        7. Emerging technologies affecting this role
-        8. Career advancement opportunities
-        
-        Return as JSON with these sections.
-        """
-        
+        """Generate market insights for target role"""
         try:
-            response = await self._call_groq(prompt)
-            return json.loads(response)
+            # Get career data
+            career_info = self.career_data[self.career_data['title'] == target_role]
+            if career_info.empty:
+                career_info = self.career_data.iloc[0]  # Fallback
+            
+            return {
+                "salary_range": f"${career_info.get('salary_low', 60000):,} - ${career_info.get('salary_high', 120000):,}",
+                "growth_rate": f"{career_info.get('growth_pct', 15):.1f}%",
+                "demand_level": "High" if career_info.get('growth_pct', 15) > 10 else "Medium",
+                "top_skills": career_info.get('top_skills', '').split(',')[:5],
+                "day_in_life": career_info.get('day_in_life', '')
+            }
+            
         except Exception as e:
             logger.error(f"Error generating market insights: {e}")
-            return self._get_fallback_market_insights(data)
+            return self._get_fallback_market_insights(career_info)
     
     async def _generate_learning_plan(
         self, 
         target_role: str, 
         user_skills: Optional[List[str]] = None,
-        user_profile: Optional[Dict] = None
+        user_profile: Optional[Dict] = None,
+        roadmap_data: Optional[Dict] = None
     ) -> Dict:
         """Generate personalized learning plan"""
-        
-        # Get role requirements
-        role_data = self.career_data[self.career_data['title'] == target_role]
-        if role_data.empty:
-            return self._get_fallback_learning_plan()
-        
-        required_skills = role_data.iloc[0]['top_skills'].split(',')
-        current_skills = user_skills or []
-        
-        # Identify skill gaps
-        skill_gaps = [skill for skill in required_skills if skill not in current_skills]
-        
-        # Find relevant micro-lessons
-        recommended_lessons = []
-        for skill in skill_gaps:
-            lessons = self._find_lessons_for_skill(skill)
-            recommended_lessons.extend(lessons)
-        
-        # Remove duplicates
-        unique_lessons = self._deduplicate_lessons(recommended_lessons)
-        
-        return {
-            "skill_gaps": skill_gaps,
-            "recommended_lessons": unique_lessons[:10],
-            "estimated_duration_hours": sum(lesson.get("duration", 30) for lesson in unique_lessons[:10]),
-            "learning_strategy": "Focus on hands-on projects and practical application of skills.",
-            "priority_skills": skill_gaps[:5]
-        }
-    
-    async def _generate_career_coaching_advice(self, target_role: str, user_profile: Optional[Dict] = None) -> Dict:
-        """Generate personalized career coaching advice"""
-        
-        prompt = f"""
-        Provide comprehensive career coaching advice for someone targeting {target_role}:
-        
-        User Profile: {user_profile}
-        
-        Include advice on:
-        1. Career development strategies
-        2. Skill development priorities
-        3. Networking and professional relationships
-        4. Personal branding and online presence
-        5. Work-life balance and stress management
-        6. Continuous learning and staying updated
-        7. Mentorship and guidance seeking
-        8. Career transition strategies
-        
-        Return as JSON with these sections.
-        """
-        
         try:
-            response = await self._call_groq(prompt)
-            return json.loads(response)
+            # Use roadmap data to create better learning plan
+            roadmap = None
+            if isinstance(roadmap_data, dict):
+                roadmap = roadmap_data.get('roadmap')
+            elif isinstance(roadmap_data, str):
+                # If roadmap_data is a string, try to parse it
+                try:
+                    roadmap = json.loads(roadmap_data)
+                except:
+                    roadmap = None
+            
+            if roadmap and isinstance(roadmap, dict):
+                # Extract courses from roadmap
+                all_courses = []
+                for level, details in roadmap.items():
+                    if level in ['entry_level', 'mid_level', 'senior_level'] and isinstance(details, dict):
+                        all_courses.extend(details.get('courses', []))
+                
+                # Find relevant micro-lessons
+                relevant_lessons = []
+                for category, lessons in self.micro_lessons.items():
+                    for lesson in lessons:
+                        if any(skill in lesson.get('skills', []) for skill in (user_skills or [])):
+                            relevant_lessons.append(lesson)
+                
+                return {
+                    "recommended_lessons": relevant_lessons[:10],
+                    "learning_path": all_courses,
+                    "estimated_duration": "6-12 months",
+                    "difficulty_level": self._assess_difficulty_level(user_skills, target_role),
+                    "roadmap_based": True
+                }
+            else:
+                # Fallback to generic learning plan
+                relevant_lessons = []
+                for category, lessons in self.micro_lessons.items():
+                    for lesson in lessons:
+                        if any(skill in lesson.get('skills', []) for skill in (user_skills or [])):
+                            relevant_lessons.append(lesson)
+                
+                return {
+                    "recommended_lessons": relevant_lessons[:10],
+                    "learning_path": self._create_learning_path(target_role, user_skills),
+                    "estimated_duration": "6-12 months",
+                    "difficulty_level": self._assess_difficulty_level(user_skills, target_role),
+                    "roadmap_based": False
+                }
+            
         except Exception as e:
-            logger.error(f"Error generating career coaching advice: {e}")
-            return self._get_fallback_coaching_advice(target_role)
+            logger.error(f"Error generating learning plan: {e}")
+            return self._get_fallback_learning_plan()
+    
+
     
     def _calculate_confidence_score(self, user_skills: Optional[List[str]], target_role: str) -> float:
-        """Calculate confidence score for the career plan"""
-        
+        """Calculate confidence score for target role"""
         if not user_skills:
+            return 0.3
+        
+        # Get required skills for target role
+        required_skills = self._get_required_skills(target_role)
+        
+        # Calculate overlap
+        overlap = len(set(user_skills) & set(required_skills))
+        total_required = len(required_skills)
+        
+        if total_required == 0:
             return 0.5
         
-        role_data = self.career_data[self.career_data['title'] == target_role]
-        if role_data.empty:
-            return 0.5
-        
-        required_skills = role_data.iloc[0]['top_skills'].split(',')
-        skill_match = len(set(user_skills) & set(required_skills)) / len(required_skills)
-        
-        return min(1.0, skill_match + 0.3)  # Add some base confidence
+        return min(overlap / total_required, 1.0)
     
     def _create_timeline(self, roadmap: Dict, user_profile: Optional[Dict] = None) -> Dict:
-        """Create timeline and milestones"""
+        """Create timeline for career progression"""
+        timeline = []
+        current_date = datetime.now()
         
-        total_months = 0
-        milestones = []
+        for level, details in roadmap.items():
+            if level in ['entry_level', 'mid_level', 'senior_level']:
+                timeline.append({
+                    "level": level,
+                    "title": details.get('title', ''),
+                    "duration": details.get('duration', ''),
+                    "skills": details.get('skills', []),
+                    "courses": details.get('courses', [])
+                })
         
-        for level in roadmap.get('levels', []):
-            duration = level.get('duration_months', 12)
-            total_months += duration
-            
-            milestones.append({
-                "level": level['name'],
-                "duration_months": duration,
-                "key_achievements": level.get('portfolio_items', []),
-                "learning_objectives": level.get('learning_objectives', [])
-            })
-        
-        return {
-            "total_duration_months": total_months,
-            "milestones": milestones,
-            "estimated_completion_date": f"{total_months} months from start"
-        }
+        return {"timeline": timeline}
     
     def _estimate_time_to_target(self, roadmap: Dict, user_profile: Optional[Dict] = None) -> Dict:
         """Estimate time to reach target role"""
-        
-        total_months = sum(level.get('duration_months', 12) for level in roadmap.get('levels', []))
-        
-        # Adjust based on user profile
-        if user_profile:
-            experience_level = user_profile.get("experience_level", "entry")
-            if experience_level == "senior":
-                total_months = max(6, total_months // 2)  # Faster for seniors
-            elif experience_level == "mid":
-                total_months = max(12, int(total_months * 0.8))  # Slightly faster for mid-level
+        total_months = 0
+        for level, details in roadmap.items():
+            if level in ['entry_level', 'mid_level', 'senior_level']:
+                duration = details.get('duration', '')
+                if 'months' in duration:
+                    months = int(duration.split()[0])
+                    total_months += months
+                elif 'years' in duration:
+                    years = int(duration.split()[0])
+                    total_months += years * 12
         
         return {
-            "estimated_months": total_months,
+            "total_months": total_months,
             "estimated_years": round(total_months / 12, 1),
-            "key_milestones": [level['name'] for level in roadmap.get('levels', [])]
+            "fast_track_possible": total_months > 24
         }
     
     def _find_closest_role(self, recommended_role: str) -> str:
-        """Find closest matching role in our data"""
-        available_roles = self.career_data['title'].tolist()
+        """Find closest role in our data"""
+        available_roles = self.career_data['title'].unique()
+        
+        best_match = available_roles[0]
+        best_similarity = 0
         
         for role in available_roles:
-            if recommended_role.lower() in role.lower() or role.lower() in recommended_role.lower():
-                return role
+            similarity = self._calculate_title_similarity(recommended_role, role)
+            if similarity > best_similarity:
+                best_similarity = similarity
+                best_match = role
         
-        return "Software Developer"  # Default fallback
+        return best_match
     
-    def _find_lessons_for_skill(self, skill: str) -> List[Dict]:
-        """Find micro-lessons relevant to a specific skill"""
-        relevant_lessons = []
+    def _calculate_title_similarity(self, title1: str, title2: str) -> float:
+        """Calculate similarity between two titles"""
+        words1 = set(title1.lower().split())
+        words2 = set(title2.lower().split())
         
-        for category, lessons in self.micro_lessons.items():
-            for lesson in lessons:
-                lesson_skills = lesson.get("skills", [])
-                if skill.lower() in [s.lower() for s in lesson_skills]:
-                    lesson["category"] = category
-                    relevant_lessons.append(lesson)
+        if not words1 or not words2:
+            return 0.0
         
-        return relevant_lessons
+        intersection = words1.intersection(words2)
+        union = words1.union(words2)
+        
+        return len(intersection) / len(union)
     
-    def _deduplicate_lessons(self, lessons: List[Dict]) -> List[Dict]:
-        """Remove duplicate lessons based on title"""
-        seen_titles = set()
-        unique_lessons = []
+    def _analyze_skill_gaps(self, user_skills: List[str], roadmap: Dict) -> List[str]:
+        """Analyze skill gaps between user skills and roadmap requirements"""
+        required_skills = []
+        for level, details in roadmap.items():
+            if level in ['entry_level', 'mid_level', 'senior_level']:
+                required_skills.extend(details.get('skills', []))
         
-        for lesson in lessons:
-            title = lesson.get("title", "")
-            if title not in seen_titles:
-                seen_titles.add(title)
-                unique_lessons.append(lesson)
+        user_skill_set = set(user_skills)
+        required_skill_set = set(required_skills)
         
-        return unique_lessons
+        gaps = required_skill_set - user_skill_set
+        return list(gaps)
+    
+    def _get_required_skills(self, target_role: str) -> List[str]:
+        """Get required skills for target role"""
+        # Check if we have a roadmap for this role
+        roadmap_data = self._get_best_roadmap(target_role)
+        if roadmap_data and roadmap_data.get('roadmap'):
+            roadmap = roadmap_data['roadmap']
+            skills = []
+            for level, details in roadmap.items():
+                if level in ['entry_level', 'mid_level', 'senior_level']:
+                    skills.extend(details.get('skills', []))
+            return skills
+        
+        # Fallback to career data
+        career_info = self.career_data[self.career_data['title'] == target_role]
+        if not career_info.empty:
+            skills_str = career_info.iloc[0].get('top_skills', '')
+            return [skill.strip() for skill in skills_str.split(',') if skill.strip()]
+        
+        return []
+    
+    def _create_learning_path(self, target_role: str, user_skills: Optional[List[str]]) -> List[str]:
+        """Create learning path for target role"""
+        roadmap_data = self._get_best_roadmap(target_role)
+        if roadmap_data and roadmap_data.get('roadmap'):
+            roadmap = roadmap_data['roadmap']
+            path = []
+            for level, details in roadmap.items():
+                if level in ['entry_level', 'mid_level', 'senior_level']:
+                    path.extend(details.get('courses', []))
+            return path
+        return ["Fundamentals", "Advanced Training", "Specialization"]
+    
+    def _assess_difficulty_level(self, user_skills: Optional[List[str]], target_role: str) -> str:
+        """Assess difficulty level based on user skills and target role"""
+        if not user_skills:
+            return "Beginner"
+        
+        required_skills = self._get_required_skills(target_role)
+        overlap = len(set(user_skills) & set(required_skills))
+        
+        if overlap >= len(required_skills) * 0.7:
+            return "Advanced"
+        elif overlap >= len(required_skills) * 0.4:
+            return "Intermediate"
+        else:
+            return "Beginner"
     
     async def _call_groq(self, prompt: str) -> str:
-        """Call Groq API with error handling"""
+        """Call Groq API for AI generation"""
         try:
-            completion = self.client.chat.completions.create(
-                model="gemma2-9b-it",
-                messages=[{"role": "user", "content": prompt}],
-                temperature=0.7,
-                max_tokens=1024
-            )
-            return completion.choices[0].message.content
+            messages = [{"role": "user", "content": prompt}]
+            return await self.call_groq(messages)
         except Exception as e:
-            logger.error(f"Groq API error: {e}")
-            raise
+            logger.error(f"Groq API call failed: {e}")
+            return ""
     
     def _create_fallback_roadmap(self, target_role: str) -> Dict:
         """Create fallback roadmap"""
         return {
-            "levels": [
-                {
-                    "name": "Foundational",
-                    "skills": ["Basic programming", "Problem solving"],
-                    "salary_range": {"min": 50000, "max": 80000},
-                    "responsibilities": ["Learn fundamentals", "Build basic projects"],
-                    "learning_objectives": ["Master core concepts", "Build portfolio"],
-                    "duration_months": 24,
-                    "portfolio_items": ["Personal website", "Simple applications"],
-                    "advancement_opportunities": ["Junior Developer", "Internship"]
-                },
-                {
-                    "name": "Intermediate",
-                    "skills": ["Advanced programming", "System design"],
-                    "salary_range": {"min": 80000, "max": 120000},
-                    "responsibilities": ["Build complex systems", "Mentor juniors"],
-                    "learning_objectives": ["Deep technical expertise", "Leadership skills"],
-                    "duration_months": 36,
-                    "portfolio_items": ["Complex applications", "Open source contributions"],
-                    "advancement_opportunities": ["Senior Developer", "Team Lead"]
-                },
-                {
-                    "name": "Advanced",
-                    "skills": ["Architecture", "Leadership"],
-                    "salary_range": {"min": 120000, "max": 200000},
-                    "responsibilities": ["Technical leadership", "Strategic decisions"],
-                    "learning_objectives": ["Architecture expertise", "Business acumen"],
-                    "duration_months": 48,
-                    "portfolio_items": ["System architecture", "Team leadership"],
-                    "advancement_opportunities": ["Principal Engineer", "CTO"]
-                }
-            ]
+            "entry_level": {
+                "title": f"Junior {target_role}",
+                "skills": ["Basic skills", "Industry knowledge"],
+                "courses": ["Fundamentals", "Industry Basics"],
+                "duration": "6-12 months",
+                "salary_range": "$50,000 - $70,000"
+            },
+            "mid_level": {
+                "title": target_role,
+                "skills": ["Advanced skills", "Leadership"],
+                "courses": ["Advanced Training", "Leadership Skills"],
+                "duration": "2-4 years",
+                "salary_range": "$70,000 - $120,000"
+            },
+            "senior_level": {
+                "title": f"Senior {target_role}",
+                "skills": ["Expertise", "Strategic thinking"],
+                "courses": ["Expert Training", "Strategic Planning"],
+                "duration": "5+ years",
+                "salary_range": "$120,000 - $200,000"
+            }
         }
     
     def _get_fallback_interview_prep(self, target_role: str) -> Dict:
         """Get fallback interview preparation"""
         return {
             "common_questions": [
-                "Tell me about yourself",
-                "Why do you want this role?",
+                f"Tell me about your experience in {target_role}",
                 "What are your strengths and weaknesses?",
                 "Where do you see yourself in 5 years?"
             ],
-            "technical_skills": [
-                "Programming fundamentals",
-                "Problem solving",
-                "System design",
-                "Data structures and algorithms"
-            ],
-            "behavioral_questions": [
-                "Describe a challenging project you worked on",
-                "How do you handle conflicts in a team?",
-                "Tell me about a time you failed and what you learned"
-            ],
-            "portfolio_suggestions": [
-                "Personal website",
-                "Open source contributions",
-                "Side projects",
-                "Technical blog"
-            ],
-            "interview_tips": [
-                "Research the company thoroughly",
+            "technical_tips": [
+                "Review core concepts",
                 "Practice coding problems",
-                "Prepare questions to ask",
-                "Dress professionally"
+                "Prepare portfolio"
             ],
-            "salary_negotiation": [
-                "Research market rates",
-                "Know your worth",
-                "Consider total compensation",
-                "Be prepared to negotiate"
+            "behavioral_tips": [
+                "Use STAR method",
+                "Provide specific examples",
+                "Show enthusiasm"
             ]
         }
     
-    def _get_fallback_market_insights(self, role_data: pd.Series) -> Dict:
+    def _get_fallback_market_insights(self, career_info) -> Dict:
         """Get fallback market insights"""
         return {
-            "market_demand": "High" if role_data['growth_pct'] > 10 else "Moderate",
-            "salary_trends": "Growing" if role_data['growth_pct'] > 15 else "Stable",
-            "required_skills": "Evolving",
-            "industry_outlook": "Positive",
-            "geographic_opportunities": "Remote-friendly",
-            "emerging_technologies": ["AI/ML", "Cloud Computing", "DevOps"],
-            "career_advancement": "Strong growth potential"
+            "salary_range": "$60,000 - $120,000",
+            "growth_rate": "15.0%",
+            "demand_level": "High",
+            "top_skills": ["python", "javascript", "communication"],
+            "day_in_life": "Collaborate with team, solve problems, learn new technologies"
         }
     
     def _get_fallback_learning_plan(self) -> Dict:
         """Get fallback learning plan"""
         return {
-            "skill_gaps": ["python", "javascript", "api"],
             "recommended_lessons": [],
-            "estimated_duration_hours": 120,
-            "learning_strategy": "Focus on hands-on projects",
-            "priority_skills": ["python", "javascript"]
+            "learning_path": ["Fundamentals", "Advanced Training", "Specialization"],
+            "estimated_duration": "6-12 months",
+            "difficulty_level": "Beginner"
         }
     
-    def _get_fallback_coaching_advice(self, target_role: str) -> Dict:
-        """Get fallback coaching advice"""
-        return {
-            "career_development": [
-                "Focus on building practical skills",
-                "Network with professionals in your field",
-                "Seek mentorship opportunities"
-            ],
-            "skill_development": [
-                "Prioritize hands-on projects",
-                "Stay updated with industry trends",
-                "Practice problem-solving regularly"
-            ],
-            "networking": [
-                "Attend industry events",
-                "Join professional communities",
-                "Build online presence"
-            ],
-            "work_life_balance": [
-                "Set clear boundaries",
-                "Take regular breaks",
-                "Maintain healthy habits"
-            ]
-        }
+
     
     def _get_fallback_roadmap(self, target_role: Optional[str], user_skills: Optional[List[str]], user_interests: Optional[List[str]]) -> Dict:
-        """Get fallback unified roadmap"""
+        """Get fallback roadmap"""
         return {
             "target_role": target_role or "Software Developer",
             "roadmap": self._create_fallback_roadmap(target_role or "Software Developer"),
             "interview_preparation": self._get_fallback_interview_prep(target_role or "Software Developer"),
-            "market_insights": {"market_demand": "High", "salary_trends": "Growing"},
+            "market_insights": self._get_fallback_market_insights(None),
             "learning_plan": self._get_fallback_learning_plan(),
-            "coaching_advice": self._get_fallback_coaching_advice(target_role or "Software Developer"),
-            "confidence_score": 0.6,
-            "timeline": {"total_duration_months": 36, "milestones": []},
-            "estimated_time_to_target": {"estimated_months": 36, "estimated_years": 3.0}
+            "coaching_advice": {
+                "advice": "Focus on developing the skills outlined in the roadmap",
+                "tips": ["Start with foundational skills", "Build a portfolio", "Network in the field"],
+                "next_steps": ["Start with foundational skills", "Build a portfolio", "Network in the field"]
+            },
+            "confidence_score": 0.5,
+            "timeline": {"timeline": []},
+            "estimated_time_to_target": {"total_months": 36, "estimated_years": 3.0, "fast_track_possible": True}
         }
 
-# Global instance
+# Global instance for easy access
 unified_career_system = UnifiedCareerSystem() 

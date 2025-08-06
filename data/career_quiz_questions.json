@@ -1,0 +1,124 @@
+{
+  "quiz_questions": [
+    {
+      "id": 1,
+      "question": "How do you prefer to spend your time?",
+      "options": [
+        {"text": "Working with my hands and tools", "score": {"realistic": 5, "investigative": 1, "artistic": 1, "social": 1, "enterprising": 1, "conventional": 1}},
+        {"text": "Solving complex problems and puzzles", "score": {"realistic": 1, "investigative": 5, "artistic": 1, "social": 1, "enterprising": 1, "conventional": 1}},
+        {"text": "Creating and designing things", "score": {"realistic": 1, "investigative": 1, "artistic": 5, "social": 1, "enterprising": 1, "conventional": 1}},
+        {"text": "Helping and teaching others", "score": {"realistic": 1, "investigative": 1, "artistic": 1, "social": 5, "enterprising": 1, "conventional": 1}},
+        {"text": "Leading and organizing projects", "score": {"realistic": 1, "investigative": 1, "artistic": 1, "social": 1, "enterprising": 5, "conventional": 1}},
+        {"text": "Following procedures and rules", "score": {"realistic": 1, "investigative": 1, "artistic": 1, "social": 1, "enterprising": 1, "conventional": 5}}
+      ]
+    },
+    {
+      "id": 2,
+      "question": "What type of work environment appeals to you most?",
+      "options": [
+        {"text": "Outdoor or hands-on work", "score": {"realistic": 5, "investigative": 2, "artistic": 1, "social": 1, "enterprising": 1, "conventional": 1}},
+        {"text": "Research and analysis", "score": {"realistic": 1, "investigative": 5, "artistic": 2, "social": 1, "enterprising": 1, "conventional": 2}},
+        {"text": "Creative and flexible environment", "score": {"realistic": 1, "investigative": 2, "artistic": 5, "social": 2, "enterprising": 2, "conventional": 1}},
+        {"text": "Collaborative team setting", "score": {"realistic": 1, "investigative": 1, "artistic": 2, "social": 5, "enterprising": 3, "conventional": 2}},
+        {"text": "Fast-paced business environment", "score": {"realistic": 1, "investigative": 1, "artistic": 1, "social": 2, "enterprising": 5, "conventional": 3}},
+        {"text": "Structured and organized setting", "score": {"realistic": 2, "investigative": 2, "artistic": 1, "social": 1, "enterprising": 2, "conventional": 5}}
+      ]
+    },
+    {
+      "id": 3,
+      "question": "What skills do you enjoy using?",
+      "options": [
+        {"text": "Technical and mechanical skills", "score": {"realistic": 5, "investigative": 3, "artistic": 1, "social": 1, "enterprising": 1, "conventional": 2}},
+        {"text": "Analytical and research skills", "score": {"realistic": 2, "investigative": 5, "artistic": 2, "social": 2, "enterprising": 2, "conventional": 3}},
+        {"text": "Creative and artistic skills", "score": {"realistic": 1, "investigative": 2, "artistic": 5, "social": 3, "enterprising": 2, "conventional": 1}},
+        {"text": "Communication and teaching skills", "score": {"realistic": 1, "investigative": 2, "artistic": 2, "social": 5, "enterprising": 3, "conventional": 2}},
+        {"text": "Leadership and management skills", "score": {"realistic": 1, "investigative": 1, "artistic": 1, "social": 3, "enterprising": 5, "conventional": 3}},
+        {"text": "Organizational and administrative skills", "score": {"realistic": 2, "investigative": 2, "artistic": 1, "social": 2, "enterprising": 3, "conventional": 5}}
+      ]
+    },
+    {
+      "id": 4,
+      "question": "What type of problems do you like solving?",
+      "options": [
+        {"text": "Physical and technical problems", "score": {"realistic": 5, "investigative": 3, "artistic": 1, "social": 1, "enterprising": 1, "conventional": 2}},
+        {"text": "Complex analytical problems", "score": {"realistic": 2, "investigative": 5, "artistic": 2, "social": 2, "enterprising": 2, "conventional": 3}},
+        {"text": "Creative and design problems", "score": {"realistic": 1, "investigative": 2, "artistic": 5, "social": 2, "enterprising": 2, "conventional": 1}},
+        {"text": "People and relationship problems", "score": {"realistic": 1, "investigative": 2, "artistic": 2, "social": 5, "enterprising": 3, "conventional": 2}},
+        {"text": "Business and strategic problems", "score": {"realistic": 1, "investigative": 2, "artistic": 1, "social": 2, "enterprising": 5, "conventional": 3}},
+        {"text": "Process and efficiency problems", "score": {"realistic": 2, "investigative": 3, "artistic": 1, "social": 2, "enterprising": 2, "conventional": 5}}
+      ]
+    },
+    {
+      "id": 5,
+      "question": "What motivates you most?",
+      "options": [
+        {"text": "Building and creating tangible things", "score": {"realistic": 5, "investigative": 2, "artistic": 3, "social": 1, "enterprising": 1, "conventional": 1}},
+        {"text": "Discovering new knowledge", "score": {"realistic": 1, "investigative": 5, "artistic": 2, "social": 2, "enterprising": 1, "conventional": 2}},
+        {"text": "Expressing creativity and originality", "score": {"realistic": 1, "investigative": 2, "artistic": 5, "social": 2, "enterprising": 2, "conventional": 1}},
+        {"text": "Helping and serving others", "score": {"realistic": 1, "investigative": 1, "artistic": 1, "social": 5, "enterprising": 2, "conventional": 2}},
+        {"text": "Achieving success and recognition", "score": {"realistic": 1, "investigative": 1, "artistic": 2, "social": 2, "enterprising": 5, "conventional": 2}},
+        {"text": "Maintaining order and stability", "score": {"realistic": 2, "investigative": 2, "artistic": 1, "social": 2, "enterprising": 2, "conventional": 5}}
+      ]
+    },
+    {
+      "id": 6,
+      "question": "What type of work would you prefer?",
+      "options": [
+        {"text": "Working with machines and tools", "score": {"realistic": 5, "investigative": 2, "artistic": 1, "social": 1, "enterprising": 1, "conventional": 2}},
+        {"text": "Research and investigation", "score": {"realistic": 1, "investigative": 5, "artistic": 2, "social": 2, "enterprising": 1, "conventional": 2}},
+        {"text": "Creative and artistic work", "score": {"realistic": 1, "investigative": 2, "artistic": 5, "social": 2, "enterprising": 2, "conventional": 1}},
+        {"text": "Teaching and training", "score": {"realistic": 1, "investigative": 2, "artistic": 2, "social": 5, "enterprising": 2, "conventional": 2}},
+        {"text": "Sales and persuasion", "score": {"realistic": 1, "investigative": 1, "artistic": 2, "social": 3, "enterprising": 5, "conventional": 2}},
+        {"text": "Data entry and record keeping", "score": {"realistic": 2, "investigative": 2, "artistic": 1, "social": 1, "enterprising": 1, "conventional": 5}}
+      ]
+    },
+    {
+      "id": 7,
+      "question": "What type of people do you enjoy working with?",
+      "options": [
+        {"text": "Practical and hands-on people", "score": {"realistic": 5, "investigative": 2, "artistic": 1, "social": 2, "enterprising": 1, "conventional": 2}},
+        {"text": "Intellectual and analytical people", "score": {"realistic": 2, "investigative": 5, "artistic": 2, "social": 2, "enterprising": 2, "conventional": 2}},
+        {"text": "Creative and artistic people", "score": {"realistic": 1, "investigative": 2, "artistic": 5, "social": 3, "enterprising": 2, "conventional": 1}},
+        {"text": "Friendly and helpful people", "score": {"realistic": 1, "investigative": 1, "artistic": 2, "social": 5, "enterprising": 2, "conventional": 2}},
+        {"text": "Ambitious and driven people", "score": {"realistic": 1, "investigative": 1, "artistic": 1, "social": 2, "enterprising": 5, "conventional": 2}},
+        {"text": "Organized and detail-oriented people", "score": {"realistic": 2, "investigative": 2, "artistic": 1, "social": 2, "enterprising": 2, "conventional": 5}}
+      ]
+    },
+    {
+      "id": 8,
+      "question": "What type of activities do you enjoy in your free time?",
+      "options": [
+        {"text": "Building and fixing things", "score": {"realistic": 5, "investigative": 2, "artistic": 1, "social": 1, "enterprising": 1, "conventional": 1}},
+        {"text": "Reading and learning new things", "score": {"realistic": 1, "investigative": 5, "artistic": 2, "social": 2, "enterprising": 2, "conventional": 2}},
+        {"text": "Creating art or music", "score": {"realistic": 1, "investigative": 2, "artistic": 5, "social": 2, "enterprising": 1, "conventional": 1}},
+        {"text": "Volunteering and helping others", "score": {"realistic": 1, "investigative": 1, "artistic": 2, "social": 5, "enterprising": 2, "conventional": 2}},
+        {"text": "Networking and social events", "score": {"realistic": 1, "investigative": 1, "artistic": 1, "social": 3, "enterprising": 5, "conventional": 2}},
+        {"text": "Organizing and planning", "score": {"realistic": 2, "investigative": 2, "artistic": 1, "social": 2, "enterprising": 2, "conventional": 5}}
+      ]
+    },
+    {
+      "id": 9,
+      "question": "What type of challenges do you find most rewarding?",
+      "options": [
+        {"text": "Physical and technical challenges", "score": {"realistic": 5, "investigative": 2, "artistic": 1, "social": 1, "enterprising": 1, "conventional": 1}},
+        {"text": "Intellectual and research challenges", "score": {"realistic": 1, "investigative": 5, "artistic": 2, "social": 2, "enterprising": 2, "conventional": 2}},
+        {"text": "Creative and design challenges", "score": {"realistic": 1, "investigative": 2, "artistic": 5, "social": 2, "enterprising": 2, "conventional": 1}},
+        {"text": "Interpersonal and communication challenges", "score": {"realistic": 1, "investigative": 1, "artistic": 2, "social": 5, "enterprising": 3, "conventional": 2}},
+        {"text": "Business and leadership challenges", "score": {"realistic": 1, "investigative": 1, "artistic": 1, "social": 2, "enterprising": 5, "conventional": 2}},
+        {"text": "Process and efficiency challenges", "score": {"realistic": 2, "investigative": 2, "artistic": 1, "social": 2, "enterprising": 2, "conventional": 5}}
+      ]
+    },
+    {
+      "id": 10,
+      "question": "What type of work environment do you prefer?",
+      "options": [
+        {"text": "Workshop or laboratory", "score": {"realistic": 5, "investigative": 4, "artistic": 2, "social": 1, "enterprising": 1, "conventional": 2}},
+        {"text": "Research facility or library", "score": {"realistic": 1, "investigative": 5, "artistic": 2, "social": 2, "enterprising": 1, "conventional": 2}},
+        {"text": "Studio or creative space", "score": {"realistic": 1, "investigative": 2, "artistic": 5, "social": 2, "enterprising": 2, "conventional": 1}},
+        {"text": "Community center or school", "score": {"realistic": 1, "investigative": 1, "artistic": 2, "social": 5, "enterprising": 2, "conventional": 2}},
+        {"text": "Office or business center", "score": {"realistic": 1, "investigative": 1, "artistic": 1, "social": 2, "enterprising": 5, "conventional": 3}},
+        {"text": "Organized office with clear procedures", "score": {"realistic": 2, "investigative": 2, "artistic": 1, "social": 2, "enterprising": 2, "conventional": 5}}
+      ]
+    }
+  ]
+} 
