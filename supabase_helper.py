@@ -166,3 +166,69 @@ def get_user_progress_stats(user_id: str) -> Dict:
     except Exception as e:
         logger.error(f"Supabase get_user_progress_stats failed: {e}")
         return {"total_lessons": 0, "completed_lessons": 0, "completion_rate": 0.0}
+
+def get_lesson_summary(lesson_id: int) -> Optional[str]:
+    """Get summary for a specific lesson."""
+    if not SUPA:
+        logger.warning("Supabase not available. Returning dummy summary.")
+        return "Sample summary for lesson content..."
+    try:
+        res = SUPA.table("lessons").select("summary").eq("id", lesson_id).execute()
+        if res.data:
+            return res.data[0]["summary"]
+        return None
+    except Exception as e:
+        logger.error(f"Supabase get_lesson_summary failed: {e}")
+        return None
+
+def get_lesson_cards(lesson_id: int, card_type: str) -> List[Dict]:
+    """Get cards (bullets, flashcards, quiz) for a specific lesson."""
+    if not SUPA:
+        logger.warning("Supabase not available. Returning dummy cards.")
+        if card_type == "bullet":
+            return [{"payload": {"text": "Sample bullet point"}}]
+        elif card_type == "flashcard":
+            return [{"payload": {"front": "Sample front", "back": "Sample back"}}]
+        elif card_type == "quiz":
+            return [{"payload": {"question": "Sample question", "options": ["A", "B", "C", "D"], "answer": "A"}}]
+        return []
+    try:
+        res = SUPA.table("lesson_metadata").select("*").eq("lesson_id", lesson_id).eq("card_type", card_type).execute()
+        return res.data
+    except Exception as e:
+        logger.error(f"Supabase get_lesson_cards failed: {e}")
+        return []
+
+def get_lesson_concept_map(lesson_id: int) -> Optional[Dict]:
+    """Get concept map for a specific lesson."""
+    if not SUPA:
+        logger.warning("Supabase not available. Returning dummy concept map.")
+        return {"nodes": [], "edges": []}
+    try:
+        res = SUPA.table("concept_maps").select("*").eq("lesson_id", lesson_id).execute()
+        if res.data:
+            return res.data[0]
+        return None
+    except Exception as e:
+        logger.error(f"Supabase get_lesson_concept_map failed: {e}")
+        return None
+
+def get_lesson_by_id(lesson_id: int) -> Optional[Dict]:
+    """Get complete lesson data by ID."""
+    if not SUPA:
+        logger.warning("Supabase not available. Returning dummy lesson.")
+        return {
+            "id": lesson_id,
+            "title": "Sample Lesson",
+            "summary": "Sample lesson summary...",
+            "framework": "generic",
+            "explanation_level": "intern"
+        }
+    try:
+        res = SUPA.table("lessons").select("*").eq("id", lesson_id).execute()
+        if res.data:
+            return res.data[0]
+        return None
+    except Exception as e:
+        logger.error(f"Supabase get_lesson_by_id failed: {e}")
+        return None
