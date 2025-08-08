@@ -424,7 +424,7 @@ class UnifiedCareerSystem:
             ai_roadmap = await self._generate_ai_roadmap(target_role, user_skills)
             interview_prep = await self._generate_interview_preparation(target_role, user_profile)
             market_insights = await self._generate_market_insights(target_role)
-            learning_plan = await self._generate_learning_plan(target_role, user_skills, user_profile)
+            learning_plan = await self._generate_learning_plan(target_role, user_skills, user_profile, roadmap)
             
             # Calculate confidence score
             confidence_score = self._calculate_confidence_score(user_skills, target_role)
@@ -783,14 +783,28 @@ class UnifiedCareerSystem:
         try:
             # Use roadmap data to create better learning plan
             roadmap = None
+            logger.info(f"Learning plan - roadmap_data type: {type(roadmap_data)}")
+            logger.info(f"Learning plan - roadmap_data: {roadmap_data}")
+            
             if isinstance(roadmap_data, dict):
-                roadmap = roadmap_data.get('roadmap')
+                # If roadmap_data is the roadmap itself
+                if 'entry_level' in roadmap_data or 'mid_level' in roadmap_data or 'senior_level' in roadmap_data:
+                    roadmap = roadmap_data
+                    logger.info("Learning plan - Using roadmap_data directly as roadmap")
+                else:
+                    # If roadmap_data is a wrapper with 'roadmap' key
+                    roadmap = roadmap_data.get('roadmap')
+                    logger.info(f"Learning plan - Extracted roadmap from wrapper: {roadmap is not None}")
             elif isinstance(roadmap_data, str):
                 # If roadmap_data is a string, try to parse it
                 try:
                     roadmap = json.loads(roadmap_data)
+                    logger.info("Learning plan - Parsed roadmap from string")
                 except:
                     roadmap = None
+                    logger.warning("Learning plan - Failed to parse roadmap from string")
+            else:
+                logger.warning(f"Learning plan - Unknown roadmap_data type: {type(roadmap_data)}")
             
             if roadmap and isinstance(roadmap, dict):
                 # Extract courses from roadmap
@@ -801,9 +815,9 @@ class UnifiedCareerSystem:
                 
                 # Find relevant micro-lessons
                 relevant_lessons = []
-                for category, lessons in self.micro_lessons.items():
-                    for lesson in lessons:
-                        if any(skill in lesson.get('skills', []) for skill in (user_skills or [])):
+                for category, category_lessons in self.micro_lessons.items():
+                    for lesson_id, lesson in category_lessons.items():
+                        if isinstance(lesson, dict) and any(skill in lesson.get('skills', []) for skill in (user_skills or [])):
                             relevant_lessons.append(lesson)
                 
                 return {
@@ -816,9 +830,9 @@ class UnifiedCareerSystem:
             else:
                 # Fallback to generic learning plan
                 relevant_lessons = []
-                for category, lessons in self.micro_lessons.items():
-                    for lesson in lessons:
-                        if any(skill in lesson.get('skills', []) for skill in (user_skills or [])):
+                for category, category_lessons in self.micro_lessons.items():
+                    for lesson_id, lesson in category_lessons.items():
+                        if isinstance(lesson, dict) and any(skill in lesson.get('skills', []) for skill in (user_skills or [])):
                             relevant_lessons.append(lesson)
                 
                 return {
@@ -848,9 +862,19 @@ class UnifiedCareerSystem:
         total_required = len(required_skills)
         
         if total_required == 0:
-            return 0.5
+            return 0.7  # Higher base confidence if no specific skills required
         
-        return min(overlap / total_required, 1.0)
+        # Calculate confidence based on skill overlap
+        skill_confidence = min(overlap / total_required, 1.0)
+        
+        # Boost confidence for common skills and experience
+        if user_skills:
+            common_skills = ["Python", "JavaScript", "Git", "HTML", "CSS", "SQL"]
+            common_overlap = len(set(user_skills) & set(common_skills))
+            if common_overlap > 0:
+                skill_confidence = min(skill_confidence + 0.2, 1.0)  # Boost by 0.2 for common skills
+        
+        return max(skill_confidence, 0.4)  # Minimum confidence of 0.4
     
     def _create_timeline(self, roadmap: Dict, user_profile: Optional[Dict] = None) -> Dict:
         """Create timeline for career progression"""

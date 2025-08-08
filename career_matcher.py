@@ -167,6 +167,12 @@ class CareerMatcher:
             
             # Sort by similarity and return top matches
             similarities.sort(key=lambda x: x["similarity"], reverse=True)
+            
+            # If all similarities are too low, use basic matching
+            if similarities and similarities[0]["similarity"] < 0.3:
+                logger.warning("Embedding similarities too low, using basic RIASEC matching")
+                return self._get_basic_career_matches(answers, top_k)
+            
             return similarities[:top_k]
             
         except Exception as e:
@@ -486,8 +492,8 @@ class CareerMatcher:
             norm = np.linalg.norm(career_vec)
             if norm > 0:
                 career_vec = career_vec / norm
-        
-        # Calculate cosine similarity
+            
+            # Calculate cosine similarity
             similarity = np.dot(user_vec, career_vec)
             similarities.append({
                 "title": career["title"],
@@ -501,7 +507,31 @@ class CareerMatcher:
         
         # Sort by similarity and return top matches
         similarities.sort(key=lambda x: x["similarity"], reverse=True)
-        return similarities[:top_k]
+        
+        # Ensure diversity in results by filtering out very similar careers
+        diverse_results = []
+        seen_titles = set()
+        
+        for match in similarities:
+            title = match["title"].lower()
+            # Check if this career is too similar to already selected ones
+            is_similar = any(
+                any(word in title for word in existing_title.split()) or
+                any(word in existing_title for word in title.split())
+                for existing_title in seen_titles
+            )
+            
+            if not is_similar and len(diverse_results) < top_k:
+                diverse_results.append(match)
+                seen_titles.add(title)
+        
+        # If we don't have enough diverse results, add more
+        if len(diverse_results) < top_k:
+            for match in similarities:
+                if match not in diverse_results and len(diverse_results) < top_k:
+                    diverse_results.append(match)
+        
+        return diverse_results
     
     def _generate_fallback_embedding(self, text: str) -> List[float]:
         """Generate fallback embedding based on text characteristics"""
