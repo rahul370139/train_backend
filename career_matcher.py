@@ -388,7 +388,7 @@ class CareerMatcher:
                 res.raise_for_status()
                 embeddings = res.json()["embeddings"]
                 return embeddings[0] if embeddings else self._generate_fallback_embedding(career_text)
-                
+            
         except Exception as e:
             logger.error(f"Failed to generate career embedding: {e}")
             # Return fallback embedding immediately to avoid cascading failures
@@ -486,8 +486,8 @@ class CareerMatcher:
             norm = np.linalg.norm(career_vec)
             if norm > 0:
                 career_vec = career_vec / norm
-            
-            # Calculate cosine similarity
+        
+        # Calculate cosine similarity
             similarity = np.dot(user_vec, career_vec)
             similarities.append({
                 "title": career["title"],
@@ -536,7 +536,7 @@ class CareerMatcher:
             embedding[i] = random.uniform(-0.1, 0.1)
         
         return embedding
-    
+
     def get_career_roadmap(self, career_title: str) -> Dict:
         """Get detailed career roadmap for a specific career"""
         # First check if we have a predefined roadmap
@@ -558,7 +558,7 @@ class CareerMatcher:
         
         # Return a generic roadmap if no good match found
         return self._create_generic_roadmap(career_title)
-    
+
     def _calculate_title_similarity(self, title1: str, title2: str) -> float:
         """Calculate similarity between two career titles"""
         words1 = set(title1.lower().split())
@@ -571,7 +571,7 @@ class CareerMatcher:
         union = words1.union(words2)
         
         return len(intersection) / len(union)
-    
+
     def _create_generic_roadmap(self, career_title: str) -> Dict:
         """Create a generic roadmap for any career"""
         return {
@@ -819,4 +819,4 @@ class CareerMatcher:
         }
 
 # Global instance for easy access
-matcher = CareerMatcher() 
+matcher = CareerMatcher()

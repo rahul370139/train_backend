@@ -590,28 +590,71 @@ class UnifiedCareerSystem:
     async def _generate_ai_roadmap(self, target_role: str, user_skills: Optional[List[str]]) -> Dict:
         """Generate AI-powered roadmap"""
         try:
-            prompt = f"""
-            Create a detailed career roadmap for {target_role} with three levels:
-            1. Entry Level (6-12 months)
-            2. Mid Level (2-3 years) 
-            3. Senior Level (5+ years)
-        
-            For each level include:
-                - Title
-                - Required skills
-                - Recommended courses
-                - Duration
-                - Salary range
-                
-            User's current skills: {user_skills or []}
+            # Build comprehensive prompt for better AI generation
+            skills_context = f"User's current skills: {', '.join(user_skills or [])}" if user_skills else "User is starting fresh"
             
-            Return as JSON format.
+            prompt = f"""
+            Create a comprehensive career roadmap for {target_role} with detailed progression levels.
+            
+            {skills_context}
+            
+            Generate a detailed roadmap with these exact levels:
+            1. Entry Level (0-2 years experience)
+            2. Mid Level (2-5 years experience) 
+            3. Senior Level (5+ years experience)
+            
+            For each level, provide:
+            - title: Specific job title
+            - skills: List of required technical and soft skills
+            - courses: List of recommended courses/certifications
+            - duration: Time to reach this level
+            - salary_range: Expected salary range
+            - responsibilities: Key responsibilities and duties
+            - projects: Types of projects they would work on
+            - learning_path: Specific steps to reach this level
+            
+            Return ONLY valid JSON with this exact structure:
+            {{
+                "entry_level": {{
+                    "title": "Junior {target_role}",
+                    "skills": ["skill1", "skill2", "skill3"],
+                    "courses": ["course1", "course2"],
+                    "duration": "6-12 months",
+                    "salary_range": "$50,000 - $70,000",
+                    "responsibilities": ["responsibility1", "responsibility2"],
+                    "projects": ["project1", "project2"],
+                    "learning_path": ["step1", "step2", "step3"]
+                }},
+                "mid_level": {{
+                    "title": "{target_role}",
+                    "skills": ["skill1", "skill2", "skill3"],
+                    "courses": ["course1", "course2"],
+                    "duration": "2-3 years",
+                    "salary_range": "$70,000 - $120,000",
+                    "responsibilities": ["responsibility1", "responsibility2"],
+                    "projects": ["project1", "project2"],
+                    "learning_path": ["step1", "step2", "step3"]
+                }},
+                "senior_level": {{
+                    "title": "Senior {target_role}",
+                    "skills": ["skill1", "skill2", "skill3"],
+                    "courses": ["course1", "course2"],
+                    "duration": "5+ years",
+                    "salary_range": "$120,000 - $200,000",
+                    "responsibilities": ["responsibility1", "responsibility2"],
+                    "projects": ["project1", "project2"],
+                    "learning_path": ["step1", "step2", "step3"]
+                }}
+            }}
+            
+            Make the roadmap specific to {target_role} and realistic for the industry.
             """
             
             response = await self._call_groq(prompt)
             
             # If Groq call failed, return fallback
             if not response:
+                logger.warning(f"Groq API failed for {target_role}, using fallback")
                 return self._create_fallback_roadmap(target_role)
             
             # Try to extract JSON from response
@@ -621,16 +664,24 @@ class UnifiedCareerSystem:
                 end_idx = response.rfind('}') + 1
                 if start_idx != -1 and end_idx != 0:
                     json_str = response[start_idx:end_idx]
-                    return json.loads(json_str)
+                    roadmap_data = json.loads(json_str)
+                    
+                    # Validate the structure
+                    if all(level in roadmap_data for level in ['entry_level', 'mid_level', 'senior_level']):
+                        logger.info(f"Successfully generated AI roadmap for {target_role}")
+                        return roadmap_data
+                    else:
+                        logger.warning(f"Invalid roadmap structure for {target_role}, using fallback")
+                        return self._create_fallback_roadmap(target_role)
                 else:
-                    # If no JSON found, return fallback
+                    logger.warning(f"No JSON found in response for {target_role}, using fallback")
                     return self._create_fallback_roadmap(target_role)
-            except json.JSONDecodeError:
-                # Fallback to structured response
+            except json.JSONDecodeError as e:
+                logger.warning(f"JSON decode error for {target_role}: {e}, using fallback")
                 return self._create_fallback_roadmap(target_role)
             
         except Exception as e:
-            logger.error(f"Error generating AI roadmap: {e}")
+            logger.error(f"Error generating AI roadmap for {target_role}: {e}")
             return self._create_fallback_roadmap(target_role)
     
     async def _generate_interview_preparation(self, target_role: str, user_profile: Optional[Dict] = None) -> Dict:
@@ -747,8 +798,8 @@ class UnifiedCareerSystem:
                 for level, details in roadmap.items():
                     if level in ['entry_level', 'mid_level', 'senior_level'] and isinstance(details, dict):
                         all_courses.extend(details.get('courses', []))
-        
-        # Find relevant micro-lessons
+                
+                # Find relevant micro-lessons
                 relevant_lessons = []
                 for category, lessons in self.micro_lessons.items():
                     for lesson in lessons:
@@ -769,7 +820,7 @@ class UnifiedCareerSystem:
                     for lesson in lessons:
                         if any(skill in lesson.get('skills', []) for skill in (user_skills or [])):
                             relevant_lessons.append(lesson)
-        
+                
                 return {
                     "recommended_lessons": relevant_lessons[:10],
                     "learning_path": self._create_learning_path(target_role, user_skills),
@@ -825,11 +876,30 @@ class UnifiedCareerSystem:
             if level in ['entry_level', 'mid_level', 'senior_level']:
                 duration = details.get('duration', '')
                 if 'months' in duration:
-                    months = int(duration.split()[0])
-                    total_months += months
+                    # Handle ranges like "6-12 months"
+                    try:
+                        if '-' in duration:
+                            # Take the average of the range
+                            parts = duration.split()[0].split('-')
+                            months = (int(parts[0]) + int(parts[1])) // 2
+                        else:
+                            months = int(duration.split()[0])
+                        total_months += months
+                    except (ValueError, IndexError):
+                        # Fallback to default
+                        total_months += 12
                 elif 'years' in duration:
-                    years = int(duration.split()[0])
-                    total_months += years * 12
+                    try:
+                        if '-' in duration:
+                            # Take the average of the range
+                            parts = duration.split()[0].split('-')
+                            years = (int(parts[0]) + int(parts[1])) // 2
+                        else:
+                            years = int(duration.split()[0])
+                        total_months += years * 12
+                    except (ValueError, IndexError):
+                        # Fallback to default
+                        total_months += 24
         
         return {
             "total_months": total_months,
@@ -935,28 +1005,115 @@ class UnifiedCareerSystem:
             return ""
     
     def _create_fallback_roadmap(self, target_role: str) -> Dict:
-        """Create fallback roadmap"""
+        """Create detailed fallback roadmap"""
         return {
             "entry_level": {
                 "title": f"Junior {target_role}",
-                "skills": ["Basic skills", "Industry knowledge"],
-                "courses": ["Fundamentals", "Industry Basics"],
+                "skills": [
+                    "Basic technical skills",
+                    "Industry fundamentals", 
+                    "Communication skills",
+                    "Problem-solving abilities",
+                    "Team collaboration"
+                ],
+                "courses": [
+                    f"{target_role} Fundamentals",
+                    "Industry Best Practices",
+                    "Professional Communication",
+                    "Project Management Basics"
+                ],
                 "duration": "6-12 months",
-                "salary_range": "$50,000 - $70,000"
+                "salary_range": "$50,000 - $70,000",
+                "responsibilities": [
+                    "Learn and apply basic concepts",
+                    "Work under supervision",
+                    "Contribute to team projects",
+                    "Follow established procedures"
+                ],
+                "projects": [
+                    "Small feature development",
+                    "Bug fixes and maintenance",
+                    "Documentation updates",
+                    "Testing and quality assurance"
+                ],
+                "learning_path": [
+                    "Complete foundational courses",
+                    "Build a portfolio project",
+                    "Network with professionals",
+                    "Apply for entry-level positions"
+                ]
             },
             "mid_level": {
                 "title": target_role,
-                "skills": ["Advanced skills", "Leadership"],
-                "courses": ["Advanced Training", "Leadership Skills"],
+                "skills": [
+                    "Advanced technical expertise",
+                    "Leadership and mentoring",
+                    "Project management",
+                    "Strategic thinking",
+                    "Industry specialization"
+                ],
+                "courses": [
+                    "Advanced {target_role} Techniques",
+                    "Leadership Development",
+                    "Strategic Planning",
+                    "Industry Specialization"
+                ],
                 "duration": "2-4 years",
-                "salary_range": "$70,000 - $120,000"
+                "salary_range": "$70,000 - $120,000",
+                "responsibilities": [
+                    "Lead project teams",
+                    "Mentor junior professionals",
+                    "Make technical decisions",
+                    "Contribute to strategic planning"
+                ],
+                "projects": [
+                    "Complex system development",
+                    "Architecture design",
+                    "Team leadership",
+                    "Cross-functional collaboration"
+                ],
+                "learning_path": [
+                    "Take on leadership roles",
+                    "Develop specialized expertise",
+                    "Build a strong professional network",
+                    "Contribute to industry knowledge"
+                ]
             },
             "senior_level": {
                 "title": f"Senior {target_role}",
-                "skills": ["Expertise", "Strategic thinking"],
-                "courses": ["Expert Training", "Strategic Planning"],
+                "skills": [
+                    "Expert-level technical skills",
+                    "Strategic leadership",
+                    "Business acumen",
+                    "Innovation and creativity",
+                    "Industry thought leadership"
+                ],
+                "courses": [
+                    "Executive Leadership",
+                    "Strategic Management",
+                    "Innovation and Design Thinking",
+                    "Industry Expert Certification"
+                ],
                 "duration": "5+ years",
-                "salary_range": "$120,000 - $200,000"
+                "salary_range": "$120,000 - $200,000",
+                "responsibilities": [
+                    "Set technical strategy",
+                    "Lead large teams",
+                    "Make executive decisions",
+                    "Drive innovation initiatives"
+                ],
+                "projects": [
+                    "Strategic initiatives",
+                    "Architecture leadership",
+                    "Innovation projects",
+                    "Industry thought leadership"
+                ],
+                "learning_path": [
+                    "Develop executive presence",
+                    "Build industry reputation",
+                    "Contribute to strategic decisions",
+                    "Mentor future leaders"
+                ]
             }
         }
     

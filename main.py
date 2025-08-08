@@ -469,8 +469,8 @@ async def career_match(request: CareerMatchRequest):
         # Validate answers
         if len(request.answers) != 10:
             raise HTTPException(400, "Need exactly 10 answers")
-        if not all(1 <= a <= 5 for a in request.answers):
-            raise HTTPException(400, "Answers must be 1-5")
+        if not all(0 <= a <= 5 for a in request.answers):  # Changed from 1-5 to 0-5 since array indices are 0-based
+            raise HTTPException(400, "Answers must be 0-5")
 
         # Get career matches using enhanced embedding-based AI capabilities
         matches = await matcher.get_career_matches(request.answers, top_k=5)
@@ -536,8 +536,8 @@ async def get_comprehensive_career_analysis(
         # Validate answers
         if len(answers) != 10:
             raise HTTPException(400, "Need exactly 10 answers")
-        if not all(1 <= a <= 5 for a in answers):
-            raise HTTPException(400, "Answers must be 1-5")
+        if not all(0 <= a <= 5 for a in answers):  # Changed from 1-5 to 0-5 since array indices are 0-based
+            raise HTTPException(400, "Answers must be 0-5")
         
         # Get comprehensive analysis with embedding-based matching
         analysis = await matcher.generate_comprehensive_career_analysis(answers, user_skills)

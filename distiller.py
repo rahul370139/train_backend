@@ -621,7 +621,7 @@ async def _handle_lesson_generation(message: str, conv_id: str, file_context: Op
         framework = current_pdf.get("framework", "GENERIC")
         
         prompt = f"""
-        Create a comprehensive EDUCATIONAL LESSON (not a summary) that teaches users how to understand and apply the concepts from: {topic}
+        Create LEARNING TOPICS that a user needs to understand to master the content from: {topic}
         
         {f"Use this context if relevant: {file_context}" if file_context else ""}
         
@@ -630,55 +630,40 @@ async def _handle_lesson_generation(message: str, conv_id: str, file_context: Op
         
         {get_explanation_prompt(explanation_level)}
         
-        IMPORTANT: This should be a TEACHING LESSON, not a summary. Create structured learning content that:
-        - Teaches step-by-step concepts
-        - Provides hands-on learning activities
-        - Includes practice exercises and projects
-        - Explains "how to" and "why" concepts work
-        - Builds practical skills and knowledge
-        - Uses pedagogical best practices
+        IMPORTANT: Create a list of LEARNING TOPICS (not a summary) that someone would need to study to understand this content.
+        Think of this as a curriculum or learning path. Each topic should be a specific subject area that needs to be learned.
+        
+        For example, if the content is about "API Development", the learning topics might be:
+        - REST API Principles
+        - HTTP Methods and Status Codes  
+        - Authentication and Authorization
+        - API Design Patterns
+        - Testing APIs
+        - Documentation Best Practices
         
         Return the lesson as JSON with this structure:
         {{
-            "title": "Learning Lesson: [Topic]",
-            "overview": "What you will learn and why it's important",
-            "prerequisites": ["What you should know before starting"],
-            "learning_objectives": ["Specific skills you'll gain"],
-            "estimated_duration": "30-45 minutes",
+            "title": "Learning Topics: [Main Subject]",
+            "overview": "What you need to learn to understand this content",
+            "estimated_duration": "Total learning time",
             "difficulty_level": "beginner|intermediate|advanced",
-            "learning_modules": [
+            "learning_topics": [
                 {{
-                    "title": "Module Title",
-                    "learning_goal": "What you'll learn in this module",
-                    "content": "Detailed educational content with explanations",
-                    "duration": "10-15 minutes",
-                    "examples": ["Practical examples"],
-                    "practice_exercises": ["Hands-on exercises"],
-                    "key_concepts": ["Core concepts to understand"],
-                    "common_mistakes": ["What to avoid"],
-                    "tips": ["Pro tips for success"]
+                    "topic": "Topic Name",
+                    "description": "What this topic covers",
+                    "importance": "Why this topic is important",
+                    "estimated_time": "How long to learn this topic",
+                    "prerequisites": ["What you need to know first"],
+                    "key_concepts": ["Main concepts to understand"],
+                    "learning_resources": ["Where to learn this topic"],
+                    "practical_applications": ["How this applies to the main content"]
                 }}
             ],
-            "hands_on_projects": [
-                {{
-                    "title": "Project Title",
-                    "description": "What you'll build/create",
-                    "objectives": ["Learning objectives"],
-                    "instructions": "Step-by-step project guide",
-                    "materials_needed": ["What you need"],
-                    "expected_outcome": "What you'll achieve"
-                }}
+            "learning_path": [
+                "Topic 1 should be learned first",
+                "Topic 2 should be learned second",
+                "Topic 3 should be learned third"
             ],
-            "assessment": [
-                {{
-                    "type": "quiz|project|reflection",
-                    "title": "Assessment Title",
-                    "description": "Test your understanding",
-                    "questions": ["Assessment questions"]
-                }}
-            ],
-            "next_steps": ["What to learn next"],
-            "additional_resources": ["Further reading and tools"],
             "framework_specific": {framework != "GENERIC"}
         }}
         """
@@ -688,18 +673,18 @@ async def _handle_lesson_generation(message: str, conv_id: str, file_context: Op
         lesson_data = json.loads(response)
         
         # Create engaging response
-        response_text = f"""🎓 **Educational Lesson Created Successfully!**
+        response_text = f"""📚 **Learning Topics Identified Successfully!**
 
 **{lesson_data['title']}**
 {lesson_data['overview']}
 
-📚 **Learning Objectives:**
-{chr(10).join(f"• {obj}" for obj in lesson_data.get('learning_objectives', []))}
+🎯 **Topics you need to learn:**
+{chr(10).join(f"• {topic['topic']} - {topic['description']}" for topic in lesson_data.get('learning_topics', []))}
 
-⏱️ **Duration:** {lesson_data.get('estimated_duration', '30-45 minutes')}
+⏱️ **Total Learning Time:** {lesson_data.get('estimated_duration', '2-3 hours')}
 🎯 **Level:** {lesson_data.get('difficulty_level', 'intermediate')}
 
-This is a structured learning lesson designed to teach you practical skills and knowledge, not just summarize content. It includes hands-on projects, practice exercises, and assessments to help you master the concepts!"""
+These are the specific topics you should study to fully understand this content. Each topic builds your knowledge systematically!"""
         
         add_message_to_conversation(conv_id, "assistant", response_text)
         
@@ -940,28 +925,40 @@ async def _handle_workflow_generation(message: str, conv_id: str, file_context: 
     try:
         topic = _extract_topic_from_message(message, ["workflow about", "create workflow", "generate workflow", "make diagram", "create chart"])
         
+        # Build the prompt without f-string to avoid brace issues
+        context_part = f"Use this context if relevant: {file_context}" if file_context else ""
+        
         prompt = f"""
         Create a comprehensive workflow/diagram for: {topic}
         
-        {f"Use this context if relevant: {file_context}" if file_context else ""}
+        {context_part}
         
         Explanation Level: {explanation_level.value}
         
         {get_explanation_prompt(explanation_level)}
         
         Create an engaging, visual workflow that includes:
-        - Clear process steps
-        - Decision points where applicable
-        - Visual elements and icons
+        - Clear process steps with decision points
+        - Visual flow diagram using Mermaid syntax
         - Time estimates for each step
         - Best practices and tips
+        - Error handling and alternative paths
+        
+        IMPORTANT: Generate a proper Mermaid diagram code that can be rendered as a visual flowchart.
+        Use different shapes for different types of steps (rectangles for processes, diamonds for decisions, etc.)
         
         Return the workflow as JSON with this structure:
         {{
             "title": "Workflow Title",
             "description": "Comprehensive workflow description",
             "type": "flowchart|process|decision_tree|timeline|sequence",
-            "mermaid_code": "graph TD\\n    A[Start] --> B[Process]\\n    B --> C[End]",
+            "mermaid_code": "graph TD\\n    A[Start] --> B{{Decision?}}\\n    B -->|Yes| C[Process 1]\\n    B -->|No| D[Process 2]\\n    C --> E[End]\\n    D --> E",
+            "visual_elements": {{
+                "start_node": "green",
+                "process_nodes": "blue", 
+                "decision_nodes": "yellow",
+                "end_node": "red"
+            }},
             "nodes": [
                 {{
                     "id": "node1",
@@ -969,7 +966,8 @@ async def _handle_workflow_generation(message: str, conv_id: str, file_context: 
                     "type": "start",
                     "description": "Initial step description",
                     "duration": "5 minutes",
-                    "tips": ["Tip 1", "Tip 2"]
+                    "tips": ["Tip 1", "Tip 2"],
+                    "color": "green"
                 }},
                 {{
                     "id": "node2",
@@ -977,7 +975,8 @@ async def _handle_workflow_generation(message: str, conv_id: str, file_context: 
                     "type": "process",
                     "description": "Process step description",
                     "duration": "10 minutes",
-                    "tips": ["Best practice 1", "Best practice 2"]
+                    "tips": ["Best practice 1", "Best practice 2"],
+                    "color": "blue"
                 }}
             ],
             "edges": [
@@ -985,7 +984,8 @@ async def _handle_workflow_generation(message: str, conv_id: str, file_context: 
                     "from": "node1",
                     "to": "node2",
                     "label": "Next",
-                    "condition": "When ready to proceed"
+                    "condition": "When ready to proceed",
+                    "style": "solid"
                 }}
             ],
             "steps": [
@@ -995,13 +995,21 @@ async def _handle_workflow_generation(message: str, conv_id: str, file_context: 
                     "description": "Detailed step description",
                     "duration": "5 minutes",
                     "best_practices": ["Practice 1", "Practice 2"],
-                    "common_mistakes": ["Mistake 1", "Mistake 2"]
+                    "common_mistakes": ["Mistake 1", "Mistake 2"],
+                    "error_handling": "What to do if this step fails"
                 }}
             ],
             "estimated_duration": "30-45 minutes",
             "difficulty_level": "beginner|intermediate|advanced",
             "prerequisites": ["Prerequisite 1", "Prerequisite 2"],
-            "tools_needed": ["Tool 1", "Tool 2"]
+            "tools_needed": ["Tool 1", "Tool 2"],
+            "alternative_paths": [
+                {{
+                    "condition": "If step fails",
+                    "action": "Alternative action",
+                    "description": "What to do instead"
+                }}
+            ]
         }}
         """
         
@@ -1033,33 +1041,32 @@ async def _handle_summary_generation(message: str, conv_id: str, file_context: O
         if file_context:
             # Use existing file context for summary
             prompt = f"""
-            Create a comprehensive summary with bullet points for the uploaded document.
+            Create a CONCISE summary with exactly 10 bullet points for the uploaded document.
             
             {get_explanation_prompt(explanation_level)}
             
             Document content: {file_context}
             
+            IMPORTANT: Create a brief, focused summary with exactly 10 key bullet points.
+            Focus on the most important information from the document.
+            
             Return the summary as JSON with this structure:
             {{
                 "title": "Document Summary",
-                "overview": "Brief overview",
+                "overview": "Brief 1-2 sentence overview",
                 "key_points": [
-                    "Key point 1",
-                    "Key point 2",
-                    "Key point 3"
+                    "Bullet point 1",
+                    "Bullet point 2",
+                    "Bullet point 3",
+                    "Bullet point 4", 
+                    "Bullet point 5",
+                    "Bullet point 6",
+                    "Bullet point 7",
+                    "Bullet point 8",
+                    "Bullet point 9",
+                    "Bullet point 10"
                 ],
-                "main_topics": [
-                    {{
-                        "topic": "Topic Name",
-                        "description": "Topic description",
-                        "key_concepts": ["Concept 1", "Concept 2"]
-                    }}
-                ],
-                "action_items": [
-                    "Action item 1",
-                    "Action item 2"
-                ],
-                "estimated_reading_time": "10-15 minutes"
+                "estimated_reading_time": "5-10 minutes"
             }}
             """
         else:
