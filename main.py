@@ -29,13 +29,16 @@ from supabase_helper import (
     insert_lesson, insert_cards, insert_concept_map, mark_lesson_completed,
     get_user_completed_lessons, upsert_user_role, get_user_role,
     get_lessons_by_framework, get_user_progress_stats,
-    get_lesson_summary, get_lesson_cards, get_lesson_concept_map, get_lesson_by_id
+    get_lesson_summary, get_lesson_cards, get_lesson_concept_map, get_lesson_by_id,
+    get_lesson_full_text
 )
 from career_matcher import matcher
 from unified_career_system import unified_career_system
 from dashboard import dashboard_system
 from dotenv import load_dotenv
 from typing import Optional, Dict, List
+from datetime import datetime
+import uuid
 
 load_dotenv()
 
@@ -351,6 +354,93 @@ async def get_lesson_content_for_chat(lesson_id: int, user_id: str):
     except Exception as e:
         logger.error(f"Failed to get lesson content for chat: {e}")
         raise HTTPException(500, f"Failed to get lesson content for chat")
+
+@app.post("/api/chat/ingest-distilled")
+async def ingest_distilled_lesson(
+    lesson_id: int = Query(..., description="Lesson ID to ingest"),
+    user_id: str = Query(..., description="User ID"),
+    conversation_id: Optional[str] = Query(None, description="Conversation ID")
+):
+    """Ingest a previously processed lesson into the chat conversation context.
+    This allows the chatbot to reference existing lessons without re-uploading the PDF."""
+    try:
+        # Get lesson data from Supabase
+        lesson_data = get_lesson_by_id(lesson_id)
+        if not lesson_data:
+            raise HTTPException(404, "Lesson not found")
+        
+        # Get lesson summary and full text
+        summary = get_lesson_summary(lesson_id)
+        full_text = get_lesson_full_text(lesson_id)
+        
+        if not summary:
+            raise HTTPException(404, "Lesson summary not found")
+        
+        # Get or create conversation
+        from distiller import get_or_create_conversation, add_message_to_conversation, conversation_store
+        conv_id = get_or_create_conversation(conversation_id, user_id)
+        
+        # Add lesson context to conversation (use full text if available, otherwise summary)
+        context_text = full_text if full_text else summary
+        conversation_store[conv_id]["file_context"] = context_text
+        conversation_store[conv_id]["updated_at"] = datetime.utcnow().isoformat()
+        
+        # Update conversation metadata
+        if "metadata" not in conversation_store[conv_id]:
+            conversation_store[conv_id]["metadata"] = {}
+        
+        conversation_store[conv_id]["metadata"].update({
+            "current_lesson": {
+                "lesson_id": lesson_id,
+                "title": lesson_data.get("title", "Unknown Lesson"),
+                "framework": lesson_data.get("framework", "GENERIC"),
+                "ingested_at": datetime.utcnow().isoformat()
+            },
+            "lesson_id": lesson_id
+        })
+        
+        # Generate welcome message
+        title = lesson_data.get("title", "your lesson")
+        framework = lesson_data.get("framework", "GENERIC")
+        
+        welcome_message = f"""🎉 **Lesson Successfully Loaded!**
+
+I've loaded **"{title}"** into our conversation. This lesson covers {framework} concepts and I'm ready to help you learn!
+
+**What I can help you with:**
+• 📋 **"Create summary"** - Get key bullet points
+• 📚 **"Create lesson"** - Generate comprehensive microlearning lesson  
+• 🧠 **"Generate quiz"** - Create interactive quiz
+• 🗂️ **"Make flashcards"** - Create study flashcards
+• 🔄 **"Create workflow"** - Generate visual workflow/diagram
+
+**Explanation Levels:**
+• **"Explain like 5"** - Simple explanations
+• **"Explain like 15"** - Intermediate level  
+• **"Explain like senior"** - Advanced explanations
+
+Just tell me what you'd like to learn about from this lesson!"""
+        
+        add_message_to_conversation(conv_id, "assistant", welcome_message)
+        
+        return {
+            "response": welcome_message,
+            "conversation_id": conv_id,
+            "message_id": str(uuid.uuid4()),
+            "timestamp": datetime.utcnow().isoformat(),
+            "lesson_ingested": True,
+            "lesson_id": lesson_id,
+            "title": title,
+            "framework": framework,
+            "summary": summary,
+            "actions": ["summary", "lesson", "quiz", "flashcards", "workflow"]
+        }
+        
+    except HTTPException:
+        raise
+    except Exception as e:
+        logger.error(f"Failed to ingest lesson for chat: {e}")
+        raise HTTPException(500, f"Failed to ingest lesson for chat")
 
 # Career matching endpoints
 @app.get("/api/career/quiz", response_model=CareerQuizResponse)

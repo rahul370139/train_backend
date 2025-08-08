@@ -16,7 +16,7 @@ try:
 except Exception as e:
     logger.warning(f"Failed to initialize Supabase client: {e}. Running in test mode.")
 
-def insert_lesson(owner_id: str, title: str, summary: str, framework: Framework = Framework.GENERIC, explanation_level: ExplanationLevel = ExplanationLevel.INTERN) -> int:
+def insert_lesson(owner_id: str, title: str, summary: str, framework: Framework = Framework.GENERIC, explanation_level: ExplanationLevel = ExplanationLevel.INTERN, full_text: str = None) -> int:
     if not SUPA:
         logger.warning("Supabase not available. Returning dummy lesson_id.")
         return 123  # Dummy ID for testing
@@ -38,6 +38,10 @@ def insert_lesson(owner_id: str, title: str, summary: str, framework: Framework 
             "explanation_level": explanation_level.value if hasattr(explanation_level, 'value') else str(explanation_level),
             "created_at": datetime.utcnow().isoformat()
         }
+        
+        # Add full_text if provided (for chatbot access)
+        if full_text:
+            insert_data["full_text"] = full_text[:50000]  # Limit full text length
         
         logger.info(f"Attempting to insert lesson with data: {insert_data}")
         res = SUPA.table("lessons").insert(insert_data).execute()
@@ -278,7 +282,8 @@ def get_lesson_by_id(lesson_id: int) -> Optional[Dict]:
             "title": "Sample Lesson",
             "summary": "Sample lesson summary...",
             "framework": "generic",
-            "explanation_level": "intern"
+            "explanation_level": "intern",
+            "full_text": "This is a test PDF content for demonstration purposes."
         }
     try:
         res = SUPA.table("lessons").select("*").eq("id", lesson_id).execute()
@@ -287,4 +292,21 @@ def get_lesson_by_id(lesson_id: int) -> Optional[Dict]:
         return None
     except Exception as e:
         logger.error(f"Supabase get_lesson_by_id failed: {e}")
+        return None
+
+def get_lesson_full_text(lesson_id: int) -> Optional[str]:
+    """Get the full text content of a lesson for chatbot access."""
+    if not SUPA:
+        logger.warning("Supabase not available. Returning dummy full text.")
+        return "This is a test PDF content for demonstration purposes."
+    
+    try:
+        res = SUPA.table("lessons").select("full_text").eq("id", lesson_id).execute()
+        if res.data and len(res.data) > 0:
+            return res.data[0].get("full_text")
+        else:
+            logger.warning(f"No lesson found with ID {lesson_id}")
+            return None
+    except Exception as e:
+        logger.error(f"Supabase get_lesson_full_text failed: {e}")
         return None

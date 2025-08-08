@@ -69,6 +69,17 @@ class ChatResponse(BaseModel):
     conversation_id: str
     message_id: str
     timestamp: str
+    file_processed: Optional[bool] = Field(default=None, description="Whether a file was processed")
+    lesson_id: Optional[int] = Field(default=None, description="Lesson ID if file was processed")
+    pdf_name: Optional[str] = Field(default=None, description="Name of uploaded PDF")
+    summary: Optional[str] = Field(default=None, description="Summary of processed content")
+    framework_detection: Optional[Dict] = Field(default=None, description="Detected frameworks")
+    action_buttons: Optional[List[Dict]] = Field(default=None, description="Available action buttons")
+    interactive_options: Optional[bool] = Field(default=None, description="Whether interactive options are available")
+    actions: Optional[List[str]] = Field(default=None, description="Available actions for dashboard")
+    lesson_ingested: Optional[bool] = Field(default=None, description="Whether a lesson was ingested")
+    title: Optional[str] = Field(default=None, description="Lesson title")
+    framework: Optional[str] = Field(default=None, description="Lesson framework")
 
 class ChatWithFileRequest(BaseModel):
     user_id: str
@@ -87,6 +98,11 @@ class ChatFileUpload(BaseModel):
     user_id: str
     conversation_id: Optional[str] = None
     explanation_level: ExplanationLevel = Field(default=ExplanationLevel.INTERN, description="Explanation complexity level")
+
+class IngestLessonRequest(BaseModel):
+    lesson_id: int = Field(..., description="Lesson ID to ingest")
+    user_id: str = Field(..., description="User ID")
+    conversation_id: Optional[str] = Field(None, description="Conversation ID")
 
 # Career matching schemas
 class QuizAnswer(BaseModel):

@@ -1166,7 +1166,8 @@ def _extract_topic_from_message(message: str, commands: List[str]) -> str:
     return message.strip()
 
 async def process_file_for_chat(file_path: Path, user_id: str, conversation_id: Optional[str], explanation_level: ExplanationLevel) -> Dict:
-    """Enhanced PDF processing with dynamic action buttons and framework detection."""
+    """Enhanced PDF processing with dynamic action buttons and framework detection.
+    Now also saves to Supabase to create lesson_id for dashboard integration."""
     try:
         # Extract text from file
         text = pdf_to_text(file_path)
@@ -1186,8 +1187,8 @@ async def process_file_for_chat(file_path: Path, user_id: str, conversation_id: 
         pdf_name = file_path.name
         store_recent_pdf(user_id, pdf_name, primary_framework, summary)
         
-        # Add file context to conversation
-        conversation_store[conv_id]["file_context"] = summary
+        # Add file context to conversation (use full text for better chatbot access)
+        conversation_store[conv_id]["file_context"] = text
         conversation_store[conv_id]["updated_at"] = datetime.utcnow().isoformat()
         
         # Update conversation metadata
@@ -1203,6 +1204,58 @@ async def process_file_for_chat(file_path: Path, user_id: str, conversation_id: 
             },
             "explanation_level": explanation_level.value
         })
+        
+        # NEW: Save to Supabase to create lesson_id for dashboard integration
+        from supabase_helper import insert_lesson, insert_cards, insert_concept_map
+        
+        # Convert framework string to Framework enum if needed
+        framework_enum = Framework.GENERIC
+        if primary_framework != "GENERIC":
+            try:
+                framework_enum = Framework(primary_framework)
+            except ValueError:
+                framework_enum = Framework.GENERIC
+        
+        # Insert lesson to get lesson_id (including full text for chatbot access)
+        lesson_id = insert_lesson(user_id, pdf_name, summary, framework_enum, explanation_level, text)
+        
+        # Generate additional content for database storage
+        qa = await gen_flashcards_quiz(summary, explanation_level)
+        concept_map = await generate_concept_map(summary)
+        embeds = await embed_chunks(chunks)
+        
+        # Insert concept map
+        insert_concept_map(lesson_id, concept_map)
+        
+        # Insert cards (bullets, flashcards, quiz)
+        card_rows = []
+        for i, b in enumerate(summary.split("•")):
+            if b.strip():
+                card_rows.append({
+                    "lesson_id": lesson_id,
+                    "card_type": "bullet",
+                    "payload": {"order": i, "text": b.strip()},
+                    "embed_vector": embeds[min(i, len(embeds)-1)] if embeds else [],
+                })
+        
+        for fc in qa["flashcards"]:
+            card_rows.append({
+                "lesson_id": lesson_id,
+                "card_type": "flashcard",
+                "payload": fc,
+            })
+        
+        for q in qa["quiz"]:
+            card_rows.append({
+                "lesson_id": lesson_id,
+                "card_type": "quiz",
+                "payload": q,
+            })
+        
+        insert_cards(lesson_id, card_rows)
+        
+        # Store lesson_id in conversation metadata for future reference
+        conversation_store[conv_id]["metadata"]["lesson_id"] = lesson_id
         
         # Generate personalized response based on framework and content
         system_prompt = f"""You are TrainPI, an AI learning assistant. {get_explanation_prompt(explanation_level)}
@@ -1269,7 +1322,9 @@ Just tell me what you'd like to create!"""
             "framework_detection": framework_detection,
             "action_buttons": action_buttons,
             "interactive_options": True,
-            "pdf_name": pdf_name
+            "pdf_name": pdf_name,
+            "lesson_id": lesson_id,  # NEW: Return lesson_id for dashboard integration
+            "actions": ["summary", "lesson", "quiz", "flashcards", "workflow"]  # NEW: Available actions for dashboard
         }
         
     except Exception as e:
