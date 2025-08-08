@@ -67,7 +67,15 @@ def pdf_to_text(path: Path) -> str:
     try:
         doc = fitz.open(str(path))
         text = "\n\n".join(page.get_text() for page in doc)
+        
+        # Check if we got meaningful text
+        if not text or len(text.strip()) < 10:
+            raise ValueError("No selectable text found in PDF - file might be scanned")
+        
         return text
+    except (fitz.FileDataError, fitz.PdfReadError, ValueError) as e:
+        logger.error(f"PDF extraction failed: {e}")
+        raise RuntimeError("Failed to extract text from PDF - the file might be scanned or corrupted")
     except Exception as e:
         logger.error(f"PDF extraction failed: {e}")
         raise RuntimeError("Failed to extract text from PDF.")

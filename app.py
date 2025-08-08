@@ -26,7 +26,14 @@ app = FastAPI(title="TrainPI API")
 
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=["https://v0-frontend-opal-nine.vercel.app"],
+    allow_origins=[
+        "https://v0-frontend-opal-nine.vercel.app",
+        "https://v0-frontend-opal-nine.vercel.app/",
+        "http://localhost:3000",
+        "http://localhost:3001",
+        "http://127.0.0.1:3000",
+        "http://127.0.0.1:3001"
+    ],
     allow_credentials=True,
     allow_methods=["*"],
     allow_headers=["*"],
@@ -56,18 +63,33 @@ async def get_frameworks():
 async def distill(owner_id: str, file: UploadFile = File(...)):
     """Enhanced distill endpoint that returns lesson_id and available actions"""
     if not file.filename.endswith(".pdf"):
-        raise HTTPException(400, "PDF only")
+        raise HTTPException(400, "Only PDF files are supported")
     
+    if not file.size or file.size > 50 * 1024 * 1024:  # 50MB limit
+        raise HTTPException(413, "File too large. Maximum size is 50MB")
+    
+    tmp = None
     try:
         # Create temporary file
         tmp = tempfile.NamedTemporaryFile(delete=False, suffix=".pdf")
-        tmp.write(await file.read())
+        content = await file.read()
+        tmp.write(content)
         tmp.close()
         
-        # Extract text and process
-        text = pdf_to_text(Path(tmp.name))
+        # Extract text and process with proper error handling
+        try:
+            text = pdf_to_text(Path(tmp.name))
+            if not text or len(text.strip()) < 10:
+                raise HTTPException(422, "Failed to extract text from PDF - the file might be scanned or corrupted")
+        except Exception as pdf_error:
+            logger.error(f"PDF text extraction failed: {pdf_error}")
+            raise HTTPException(422, "Failed to process PDF – maybe it's scanned or has no selectable text?")
+        
         chunks = chunk_text(text)
         logger.info(f"{len(chunks)} chunks created")
+        
+        if not chunks:
+            raise HTTPException(422, "No content could be extracted from the PDF")
         
         # Auto-detect framework
         framework_detection = await detect_multiple_frameworks(text)
@@ -122,12 +144,17 @@ async def distill(owner_id: str, file: UploadFile = File(...)):
             "preview": preview
         }
         
+    except HTTPException:
+        raise
     except Exception as e:
         logger.error(f"Distill processing failed: {e}")
         raise HTTPException(500, f"Failed to process PDF: {str(e)}")
     finally:
-        if 'tmp' in locals():
-            os.unlink(tmp.name)
+        if tmp and os.path.exists(tmp.name):
+            try:
+                os.unlink(tmp.name)
+            except:
+                pass
 
 @app.get("/api/lesson/{lesson_id}/{action}")
 async def lesson_action(lesson_id: int, action: str):
