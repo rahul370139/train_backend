@@ -580,9 +580,9 @@ class UnifiedCareerSystem:
                 "similarity": roadmap_data.get('similarity', 0) if roadmap_data else 0,
                 "has_predefined_roadmap": roadmap_data.get('source') != 'generated' if roadmap_data else False
             }
-            
+        
             return roadmap
-            
+    
         except Exception as e:
             logger.error(f"Error generating detailed roadmap: {e}")
             return self._create_fallback_roadmap(target_role)
@@ -595,14 +595,14 @@ class UnifiedCareerSystem:
             1. Entry Level (6-12 months)
             2. Mid Level (2-3 years) 
             3. Senior Level (5+ years)
-            
+        
             For each level include:
-            - Title
-            - Required skills
-            - Recommended courses
-            - Duration
-            - Salary range
-            
+                - Title
+                - Required skills
+                - Recommended courses
+                - Duration
+                - Salary range
+                
             User's current skills: {user_skills or []}
             
             Return as JSON format.
@@ -747,8 +747,8 @@ class UnifiedCareerSystem:
                 for level, details in roadmap.items():
                     if level in ['entry_level', 'mid_level', 'senior_level'] and isinstance(details, dict):
                         all_courses.extend(details.get('courses', []))
-                
-                # Find relevant micro-lessons
+        
+        # Find relevant micro-lessons
                 relevant_lessons = []
                 for category, lessons in self.micro_lessons.items():
                     for lesson in lessons:
@@ -769,7 +769,7 @@ class UnifiedCareerSystem:
                     for lesson in lessons:
                         if any(skill in lesson.get('skills', []) for skill in (user_skills or [])):
                             relevant_lessons.append(lesson)
-                
+        
                 return {
                     "recommended_lessons": relevant_lessons[:10],
                     "learning_path": self._create_learning_path(target_role, user_skills),
