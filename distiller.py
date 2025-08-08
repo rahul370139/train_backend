@@ -621,7 +621,7 @@ async def _handle_lesson_generation(message: str, conv_id: str, file_context: Op
         framework = current_pdf.get("framework", "GENERIC")
         
         prompt = f"""
-        Create a comprehensive microlearning lesson about: {topic}
+        Create a comprehensive EDUCATIONAL LESSON (not a summary) that teaches users how to understand and apply the concepts from: {topic}
         
         {f"Use this context if relevant: {file_context}" if file_context else ""}
         
@@ -630,41 +630,55 @@ async def _handle_lesson_generation(message: str, conv_id: str, file_context: Op
         
         {get_explanation_prompt(explanation_level)}
         
-        Create an engaging, interactive microlearning lesson that follows these principles:
-        - Keep sections short and focused (5-10 minutes each)
-        - Include practical examples and real-world applications
-        - Add interactive elements and exercises
-        - Use clear, step-by-step instructions
-        - Include visual elements descriptions where helpful
+        IMPORTANT: This should be a TEACHING LESSON, not a summary. Create structured learning content that:
+        - Teaches step-by-step concepts
+        - Provides hands-on learning activities
+        - Includes practice exercises and projects
+        - Explains "how to" and "why" concepts work
+        - Builds practical skills and knowledge
+        - Uses pedagogical best practices
         
         Return the lesson as JSON with this structure:
         {{
-            "title": "Lesson Title",
-            "overview": "Brief overview",
-            "learning_objectives": ["Objective 1", "Objective 2", "Objective 3"],
+            "title": "Learning Lesson: [Topic]",
+            "overview": "What you will learn and why it's important",
+            "prerequisites": ["What you should know before starting"],
+            "learning_objectives": ["Specific skills you'll gain"],
             "estimated_duration": "30-45 minutes",
             "difficulty_level": "beginner|intermediate|advanced",
-            "sections": [
+            "learning_modules": [
                 {{
-                    "title": "Section Title",
-                    "content": "Detailed content with examples",
-                    "duration": "5-10 minutes",
-                    "examples": ["Example 1", "Example 2"],
-                    "key_points": ["Point 1", "Point 2"],
-                    "interactive_elements": ["Exercise 1", "Quiz question"]
+                    "title": "Module Title",
+                    "learning_goal": "What you'll learn in this module",
+                    "content": "Detailed educational content with explanations",
+                    "duration": "10-15 minutes",
+                    "examples": ["Practical examples"],
+                    "practice_exercises": ["Hands-on exercises"],
+                    "key_concepts": ["Core concepts to understand"],
+                    "common_mistakes": ["What to avoid"],
+                    "tips": ["Pro tips for success"]
                 }}
             ],
-            "exercises": [
+            "hands_on_projects": [
                 {{
-                    "type": "practice|quiz|project",
-                    "title": "Exercise Title",
-                    "description": "Exercise description",
-                    "instructions": "Step-by-step instructions",
-                    "expected_outcome": "What the user should achieve"
+                    "title": "Project Title",
+                    "description": "What you'll build/create",
+                    "objectives": ["Learning objectives"],
+                    "instructions": "Step-by-step project guide",
+                    "materials_needed": ["What you need"],
+                    "expected_outcome": "What you'll achieve"
                 }}
             ],
-            "summary": "Key takeaways and next steps",
-            "additional_resources": ["Resource 1", "Resource 2"],
+            "assessment": [
+                {{
+                    "type": "quiz|project|reflection",
+                    "title": "Assessment Title",
+                    "description": "Test your understanding",
+                    "questions": ["Assessment questions"]
+                }}
+            ],
+            "next_steps": ["What to learn next"],
+            "additional_resources": ["Further reading and tools"],
             "framework_specific": {framework != "GENERIC"}
         }}
         """
@@ -674,18 +688,18 @@ async def _handle_lesson_generation(message: str, conv_id: str, file_context: Op
         lesson_data = json.loads(response)
         
         # Create engaging response
-        response_text = f"""🎓 **Lesson Created Successfully!**
+        response_text = f"""🎓 **Educational Lesson Created Successfully!**
 
 **{lesson_data['title']}**
 {lesson_data['overview']}
 
-📚 **What you'll learn:**
+📚 **Learning Objectives:**
 {chr(10).join(f"• {obj}" for obj in lesson_data.get('learning_objectives', []))}
 
 ⏱️ **Duration:** {lesson_data.get('estimated_duration', '30-45 minutes')}
 🎯 **Level:** {lesson_data.get('difficulty_level', 'intermediate')}
 
-Ready to start learning! The lesson is structured for easy understanding and includes interactive exercises."""
+This is a structured learning lesson designed to teach you practical skills and knowledge, not just summarize content. It includes hands-on projects, practice exercises, and assessments to help you master the concepts!"""
         
         add_message_to_conversation(conv_id, "assistant", response_text)
         

@@ -41,7 +41,12 @@ def insert_lesson(owner_id: str, title: str, summary: str, framework: Framework 
         
         # Add full_text if provided (for chatbot access)
         if full_text:
-            insert_data["full_text"] = full_text[:50000]  # Limit full text length
+            try:
+                insert_data["full_text"] = full_text[:50000]  # Limit full text length
+            except Exception:
+                # If full_text column doesn't exist, just continue without it
+                logger.warning("full_text column not available, storing only summary")
+                pass
         
         logger.info(f"Attempting to insert lesson with data: {insert_data}")
         res = SUPA.table("lessons").insert(insert_data).execute()
@@ -301,12 +306,24 @@ def get_lesson_full_text(lesson_id: int) -> Optional[str]:
         return "This is a test PDF content for demonstration purposes."
     
     try:
-        res = SUPA.table("lessons").select("full_text").eq("id", lesson_id).execute()
+        # First try to get full_text if the column exists
+        try:
+            res = SUPA.table("lessons").select("full_text").eq("id", lesson_id).execute()
+            if res.data and len(res.data) > 0 and res.data[0].get("full_text"):
+                return res.data[0].get("full_text")
+        except Exception:
+            # If full_text column doesn't exist, fall back to summary
+            pass
+        
+        # Fallback to summary if full_text is not available
+        res = SUPA.table("lessons").select("summary").eq("id", lesson_id).execute()
         if res.data and len(res.data) > 0:
-            return res.data[0].get("full_text")
-        else:
-            logger.warning(f"No lesson found with ID {lesson_id}")
-            return None
+            summary = res.data[0].get("summary")
+            if summary:
+                return f"Document Summary: {summary}\n\nNote: This is a summary of the document content. For more detailed access, please upload the PDF directly to the chat."
+        
+        logger.warning(f"No lesson found with ID {lesson_id}")
+        return None
     except Exception as e:
         logger.error(f"Supabase get_lesson_full_text failed: {e}")
         return None
