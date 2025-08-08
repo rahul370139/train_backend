@@ -66,6 +66,34 @@ async def root():
 async def health_check():
     return {"status": "healthy", "service": "TrainPI API", "timestamp": "2024-08-01"}
 
+@app.get("/api/debug/lesson/{lesson_id}")
+async def debug_lesson_content(lesson_id: int):
+    """Debug endpoint to test lesson content generation"""
+    try:
+        # Test all lesson actions
+        summary = await _generate_summary_on_demand(lesson_id)
+        quiz = await _generate_quiz_on_demand(lesson_id)
+        flashcards = await _generate_flashcards_on_demand(lesson_id)
+        workflow = await _generate_workflow_on_demand(lesson_id)
+        lesson = await _generate_lesson_on_demand(lesson_id)
+        
+        return {
+            "lesson_id": lesson_id,
+            "summary_count": len(summary),
+            "quiz_count": len(quiz),
+            "flashcards_count": len(flashcards),
+            "workflow_count": len(workflow),
+            "lesson_title": lesson.get("title", "Unknown"),
+            "summary_preview": summary[:2] if summary else [],
+            "quiz_preview": quiz[:1] if quiz else [],
+            "flashcards_preview": flashcards[:1] if flashcards else [],
+            "workflow_preview": workflow[:2] if workflow else [],
+            "status": "All content generated successfully"
+        }
+    except Exception as e:
+        logger.error(f"Debug lesson content failed: {e}")
+        return {"error": str(e), "lesson_id": lesson_id}
+
 @app.post("/api/distill")
 async def distill_pdf(
     owner_id: str = Query(..., description="Supabase user UUID"),
@@ -266,12 +294,63 @@ async def get_lesson_summary_chat(lesson_id: int, user_id: str):
             bullets = [b.strip() for b in summary.split("•") if b.strip()]
             return {"content": bullets}
         else:
-            raise HTTPException(404, f"Summary not found for lesson {lesson_id}")
+            # Generate summary on-demand for chat
+            summary_content = await _generate_summary_on_demand(lesson_id)
+            return {"content": summary_content}
     except HTTPException:
         raise
     except Exception as e:
         logger.error(f"Lesson summary chat failed: {e}")
         raise HTTPException(500, f"Failed to get summary for lesson {lesson_id}")
+
+@app.get("/api/chat/lesson/{lesson_id}/content")
+async def get_lesson_content_for_chat(lesson_id: int, user_id: str):
+    """Get comprehensive lesson content for AI chatbot access"""
+    try:
+        # Get lesson data
+        lesson_data = get_lesson_by_id(lesson_id)
+        summary = get_lesson_summary(lesson_id)
+        
+        # Generate content on-demand if not available
+        if not summary:
+            summary_bullets = await _generate_summary_on_demand(lesson_id)
+        else:
+            summary_bullets = [b.strip() for b in summary.split("•") if b.strip()]
+        
+        # Get quiz content
+        quiz_cards = get_lesson_cards(lesson_id, "quiz")
+        if quiz_cards:
+            quiz_questions = [card["payload"] for card in quiz_cards]
+        else:
+            quiz_questions = await _generate_quiz_on_demand(lesson_id)
+        
+        # Get flashcard content
+        flashcard_cards = get_lesson_cards(lesson_id, "flashcard")
+        if flashcard_cards:
+            flashcards = [card["payload"] for card in flashcard_cards]
+        else:
+            flashcards = await _generate_flashcards_on_demand(lesson_id)
+        
+        # Get workflow content
+        workflow_content = await _generate_workflow_on_demand(lesson_id)
+        
+        # Get concept map
+        concept_map = get_lesson_concept_map(lesson_id) or _generate_fallback_concept_map()
+        
+        return {
+            "lesson_id": lesson_id,
+            "title": lesson_data.get("title", "API Development Fundamentals") if lesson_data else "API Development Fundamentals",
+            "summary": summary_bullets,
+            "quiz": quiz_questions,
+            "flashcards": flashcards,
+            "workflow": workflow_content,
+            "concept_map": concept_map,
+            "message": f"I can see you've uploaded a PDF that has been processed into a comprehensive lesson. Here's what I can help you with: {len(summary_bullets)} key points, {len(quiz_questions)} quiz questions, {len(flashcards)} flashcards, and a detailed workflow with {len(workflow_content)} steps. What would you like to learn about?"
+        }
+        
+    except Exception as e:
+        logger.error(f"Failed to get lesson content for chat: {e}")
+        raise HTTPException(500, f"Failed to get lesson content for chat")
 
 # Career matching endpoints
 @app.get("/api/career/quiz", response_model=CareerQuizResponse)
