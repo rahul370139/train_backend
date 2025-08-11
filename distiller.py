@@ -44,6 +44,41 @@ async def cohere_embed(batch: List[str]) -> List[List[float]]:
         res.raise_for_status()
         return res.json()["embeddings"]
 
+def _parse_json_safely(raw: str) -> Optional[Dict]:
+    """Best-effort extraction and parsing of JSON from LLM responses.
+    - Strips code fences
+    - Grabs the largest {...} block
+    - Tries simple repairs (single->double quotes, trailing commas)
+    Returns dict on success, else None.
+    """
+    if not raw:
+        return None
+    text = raw.strip()
+    # Remove markdown fences
+    if text.startswith("```") and text.endswith("```"):
+        text = text.strip('`')
+        # Remove first word like json
+        parts = text.split('\n', 1)
+        text = parts[1] if len(parts) > 1 else text
+    # Extract JSON object boundaries
+    start = text.find('{')
+    end = text.rfind('}')
+    if start == -1 or end == -1 or end <= start:
+        return None
+    candidate = text[start:end+1]
+    # Simple repairs
+    repaired = candidate
+    repaired = repaired.replace("\r", " ").replace("\n", " ")
+    # Replace single quotes with double if it looks like JSON but with single quotes
+    if '"' not in repaired and "'" in repaired:
+        repaired = repaired.replace("'", '"')
+    # Remove trailing commas before } or ]
+    repaired = repaired.replace(', }', ' }').replace(', ]', ' ]')
+    try:
+        return json.loads(repaired)
+    except Exception:
+        return None
+
 async def call_groq(messages: List[Dict]) -> str:
     """Call Groq API with optimized model"""
     url = "https://api.groq.com/openai/v1/chat/completions"
@@ -247,6 +282,42 @@ def get_explanation_prompt(level: ExplanationLevel) -> str:
     }
     return prompts.get(level, prompts[ExplanationLevel.INTERN])
 
+def _normalize_framework_value(name: str) -> Framework:
+    """Normalize arbitrary framework names to our Framework enum values."""
+    if not name:
+        return Framework.GENERIC
+    normalized = name.strip().lower()
+    aliases = {
+        'fast api': 'fastapi',
+        'fastapi': 'fastapi',
+        'reactjs': 'react',
+        'react': 'react',
+        'python': 'python',
+        'node': 'nodejs',
+        'nodejs': 'nodejs',
+        'node.js': 'nodejs',
+        'docker': 'docker',
+        'k8s': 'kubernetes',
+        'kubernetes': 'kubernetes',
+        'ml': 'machine_learning',
+        'machine_learning': 'machine_learning',
+        'ai': 'ai',
+        'langchain': 'langchain',
+        'nextjs': 'nextjs',
+        'typescript': 'typescript',
+        'frontend': 'frontend',
+        'backend': 'backend',
+        'database': 'database',
+        'cloud': 'cloud',
+        'devops': 'devops',
+        'generic': 'generic'
+    }
+    value = aliases.get(normalized, normalized)
+    try:
+        return Framework(value)
+    except ValueError:
+        return Framework.GENERIC
+
 async def detect_framework(text: str) -> Framework:
     """Enhanced framework detection with confidence scoring"""
     try:
@@ -280,14 +351,12 @@ async def detect_framework(text: str) -> Framework:
         messages = [{"role": "user", "content": prompt}]
         result = await call_groq(messages)
         
-        try:
-            framework_data = json.loads(result)
-            primary = framework_data.get("primary_framework", "GENERIC")
-            return Framework(primary) if primary in [f.value for f in Framework] else Framework.GENERIC
-        except json.JSONDecodeError:
-            # Fallback to simple detection
-            result = result.strip().lower()
-            return Framework(result) if result in [f.value for f in Framework] else Framework.GENERIC
+        data = _parse_json_safely(result)
+        if isinstance(data, dict):
+            primary = data.get("primary_framework") or data.get("primary") or "generic"
+            return _normalize_framework_value(primary)
+        # Fallback to simple detection
+        return _normalize_framework_value(result)
             
     except Exception as e:
         logger.error(f"Framework detection failed: {e}")
@@ -324,10 +393,25 @@ async def detect_multiple_frameworks(text: str) -> Dict:
         messages = [{"role": "user", "content": prompt}]
         result = await call_groq(messages)
         
-        try:
-            return json.loads(result)
-        except json.JSONDecodeError:
-            return {"frameworks": [], "primary_framework": "GENERIC", "total_frameworks": 0}
+        data = _parse_json_safely(result)
+        if isinstance(data, dict):
+            # Normalize values to our enum values (lowercase)
+            primary = data.get("primary_framework") or data.get("primary") or "generic"
+            frameworks = data.get("frameworks", [])
+            normalized_list = []
+            for item in frameworks:
+                if isinstance(item, dict):
+                    name = item.get("name") or item.get("framework") or ""
+                    item["name"] = _normalize_framework_value(name).value
+                    normalized_list.append(item)
+                elif isinstance(item, str):
+                    normalized_list.append({"name": _normalize_framework_value(item).value})
+            return {
+                "frameworks": normalized_list,
+                "primary_framework": _normalize_framework_value(primary).value,
+                "total_frameworks": len(normalized_list)
+            }
+        return {"frameworks": [], "primary_framework": "generic", "total_frameworks": 0}
             
     except Exception as e:
         logger.error(f"Multiple framework detection failed: {e}")
@@ -355,7 +439,17 @@ async def map_reduce_summary(chunks: List[str], explanation_level: ExplanationLe
             + "\n".join(mapped)
         )
         messages = [{"role": "user", "content": reduce_prompt}]
-        return await call_groq(messages)
+        raw = await call_groq(messages)
+        # Ensure bulletized output using '• ' separator
+        text = raw.strip()
+        if '•' not in text:
+            # Convert lines or hyphens to bullets
+            lines = [line.strip(' -\t') for line in text.splitlines() if line.strip()]
+            if not lines:
+                return ""
+            bullets = [f"• {line}" for line in lines[:10]]
+            return "\n".join(bullets)
+        return raw
     except Exception as e:
         logger.error(f"LLM map_reduce_summary failed: {e}")
         # Return a simple summary instead of failing
@@ -376,22 +470,10 @@ async def gen_flashcards_quiz(summary: str, explanation_level: ExplanationLevel 
     try:
         messages = [{"role": "user", "content": prompt}]
         response = await call_groq(messages)
-        
-        # Try to extract JSON from response
-        try:
-            # Look for JSON in the response
-            start_idx = response.find('{')
-            end_idx = response.rfind('}') + 1
-            if start_idx != -1 and end_idx != 0:
-                json_str = response[start_idx:end_idx]
-                data = json.loads(json_str)
-                return data
-            else:
-                # If no JSON found, return fallback
-                return _get_fallback_flashcards_quiz(summary)
-        except json.JSONDecodeError:
-            # Fallback to structured response
-            return _get_fallback_flashcards_quiz(summary)
+        data = _parse_json_safely(response)
+        if isinstance(data, dict) and ("flashcards" in data and "quiz" in data):
+            return data
+        return _get_fallback_flashcards_quiz(summary)
             
     except Exception as e:
         logger.error(f"LLM flashcards/quiz failed: {e}")
@@ -442,22 +524,15 @@ Summary: {summary}
 """
         messages = [{"role": "user", "content": prompt}]
         response = await call_groq(messages)
-        
-        # Try to extract JSON from response
-        try:
-            # Look for JSON in the response
-            start_idx = response.find('{')
-            end_idx = response.rfind('}') + 1
-            if start_idx != -1 and end_idx != 0:
-                json_str = response[start_idx:end_idx]
-                data = json.loads(json_str)
-                return data
-            else:
-                # If no JSON found, return fallback
-                return _get_fallback_concept_map(summary)
-        except json.JSONDecodeError:
-            # Fallback to structured response
-            return _get_fallback_concept_map(summary)
+        data = _parse_json_safely(response)
+        if isinstance(data, dict) and "nodes" in data:
+            # Normalize node key to include 'title' for downstream compatibility
+            for node in data.get("nodes", []):
+                if isinstance(node, dict):
+                    if "label" in node and "title" not in node:
+                        node["title"] = node["label"]
+            return data
+        return _get_fallback_concept_map(summary)
             
     except Exception as e:
         logger.error(f"Concept map generation failed: {e}")
@@ -1127,8 +1202,8 @@ async def _handle_explanation_level_change(message: str, conv_id: str, file_cont
         
         # Determine new explanation level
         if any(level in message_lower for level in ["explain like 5", "explain for beginner", "simple", "basic"]):
-            new_level = ExplanationLevel.BEGINNER
-            level_name = "Beginner (Age 5)"
+            new_level = ExplanationLevel.FIVE_YEAR_OLD
+            level_name = "5 Year Old"
         elif any(level in message_lower for level in ["explain like 15", "explain for intermediate", "moderate"]):
             new_level = ExplanationLevel.INTERN
             level_name = "Intermediate (Age 15)"
@@ -1412,9 +1487,9 @@ def get_side_menu_data(user_id: str) -> Dict:
                 {"name": "GENERIC", "icon": "📚"}
             ],
             "explanation_levels": [
-                {"value": "BEGINNER", "label": "5-year-old", "description": "Simple explanations"},
-                {"value": "INTERN", "label": "Intern", "description": "Intermediate level"},
-                {"value": "SENIOR", "label": "Senior Expert", "description": "Advanced explanations"}
+                {"value": "5_year_old", "label": "5-year-old", "description": "Simple explanations"},
+                {"value": "intern", "label": "Intern", "description": "Intermediate level"},
+                {"value": "senior", "label": "Senior Expert", "description": "Advanced explanations"}
             ]
         }
     except Exception as e:

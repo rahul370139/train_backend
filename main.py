@@ -1,3 +1,10 @@
+"""
+TrainPI Microlearning API - Consolidated Version
+This file consolidates all functionality from app.py and main.py into a single,
+comprehensive API server with enhanced career guidance, learning management,
+and AI-powered features.
+"""
+
 from fastapi import FastAPI, UploadFile, File, HTTPException, Query
 from fastapi.middleware.cors import CORSMiddleware
 from loguru import logger
@@ -42,6 +49,34 @@ import uuid
 
 load_dotenv()
 
+# Initialize missing components that are referenced in the code
+# These are placeholders - in production, these would be properly initialized
+career_coach = None  # Placeholder for career coaching system
+recommendation_engine = None  # Placeholder for recommendation engine
+roadmap_generator = None  # Placeholder for roadmap generator
+unified_advisor = unified_career_system  # Use the existing unified career system
+
+async def get_role_based_recommendations(user_id: str, role: str, experience_level: str, interests: List[str]):
+    """Get role-based lesson recommendations"""
+    try:
+        # Get lessons by framework (role-based)
+        framework_mapping = {
+            "Developer": Framework.PYTHON,
+            "Frontend Developer": Framework.REACT,
+            "Backend Developer": Framework.PYTHON,
+            "Data Scientist": Framework.PYTHON,
+            "DevOps Engineer": Framework.GENERIC,
+            "Product Manager": Framework.GENERIC
+        }
+        
+        framework = framework_mapping.get(role, Framework.GENERIC)
+        lessons = get_lessons_by_framework(framework, limit=5)
+        
+        return lessons
+    except Exception as e:
+        logger.error(f"Failed to get role-based recommendations: {e}")
+        return []
+
 app = FastAPI(title="TrainPi Microlearning API")
 
 app.add_middleware(
@@ -68,6 +103,10 @@ async def root():
 @app.get("/health")
 async def health_check():
     return {"status": "healthy", "service": "TrainPI API", "timestamp": "2024-08-01"}
+
+@app.get("/api/test")
+async def test_endpoint():
+    return {"message": "API is working correctly", "endpoint": "test"}
 
 @app.get("/api/debug/lesson/{lesson_id}")
 async def debug_lesson_content(lesson_id: int):
@@ -246,6 +285,9 @@ async def lesson_action(lesson_id: int, action: str):
                 
                 # Get concept map
                 concept_map = get_lesson_concept_map(lesson_id)
+                # Build micro-lessons from detected framework
+                framework_value = lesson_data.get("framework", "generic")
+                micro_lessons = _get_micro_lessons_for_framework(framework_value)
                 
                 return {
                     "content": {
@@ -253,13 +295,19 @@ async def lesson_action(lesson_id: int, action: str):
                         "summary": lesson_data.get("summary", ""),
                         "framework": lesson_data.get("framework", "generic"),
                         "bullets": bullets,
-                        "concept_map": concept_map
+                        "concept_map": concept_map,
+                        "micro_lessons": micro_lessons
                     }
                 }
             else:
                 # Generate lesson content on-demand if not found in Supabase
                 logger.info(f"Lesson not found in Supabase for lesson {lesson_id}, generating on-demand")
                 lesson_content = await _generate_lesson_on_demand(lesson_id)
+                # Attach micro-lessons using framework from lesson_content
+                framework_value = (lesson_content or {}).get("framework", "generic")
+                micro_lessons = _get_micro_lessons_for_framework(framework_value)
+                if isinstance(lesson_content, dict):
+                    lesson_content["micro_lessons"] = micro_lessons
                 return {"content": lesson_content}
         
         elif action == "workflow":
@@ -414,7 +462,7 @@ I've loaded **"{title}"** into our conversation. This lesson covers {framework} 
 • 🗂️ **"Make flashcards"** - Create study flashcards
 • 🔄 **"Create workflow"** - Generate visual workflow/diagram
 
-**Explanation Levels:**
+**Explanation Levels on the side bar:**
 • **"Explain like 5"** - Simple explanations
 • **"Explain like 15"** - Intermediate level  
 • **"Explain like senior"** - Advanced explanations
@@ -442,109 +490,6 @@ Just tell me what you'd like to learn about from this lesson!"""
         logger.error(f"Failed to ingest lesson for chat: {e}")
         raise HTTPException(500, f"Failed to ingest lesson for chat")
 
-# Career matching endpoints
-@app.get("/api/career/quiz", response_model=CareerQuizResponse)
-async def get_career_quiz():
-    """Get the 10 career quiz questions"""
-    try:
-        questions = matcher.get_quiz_questions()
-        quiz_questions = [
-            CareerQuizQuestion(
-                id=q["id"],
-                question=q["question"],
-                category="career_assessment",  # Default category
-                description="Career interest assessment question"  # Default description
-            )
-            for q in questions
-        ]
-        return CareerQuizResponse(questions=quiz_questions)
-    except Exception as e:
-        logger.error(f"Failed to get career quiz: {e}")
-        raise HTTPException(500, "Failed to get career quiz questions.")
-
-@app.post("/api/career/match", response_model=CareerMatchResponse)
-async def career_match(request: CareerMatchRequest):
-    """Match user quiz answers to career paths using enhanced algorithms"""
-    try:
-        # Validate answers
-        if len(request.answers) != 10:
-            raise HTTPException(400, "Need exactly 10 answers")
-        if not all(0 <= a <= 5 for a in request.answers):  # Changed from 1-5 to 0-5 since array indices are 0-based
-            raise HTTPException(400, "Answers must be 0-5")
-
-        # Get career matches using enhanced embedding-based AI capabilities
-        matches = await matcher.get_career_matches(request.answers, top_k=5)
-
-        # Convert to response format
-        cards = []
-        for m in matches:
-            try:
-                # Parse skills (comma-separated string to list)
-                skills_str = m.get("top_skills", "technical skills, problem solving, communication")
-                common_skills = [skill.strip() for skill in skills_str.split(",")][:3]
-
-                card = CareerCard(
-                    title=m["title"],
-                    salary_low=int(m["salary_low"]),
-                    salary_high=int(m["salary_high"]),
-                    growth_pct=float(m["growth_pct"]),
-                    common_skills=common_skills,
-                    day_in_life=m["day_in_life"],
-                    similarity=round(float(m["similarity"]), 3),
-                    roadmap=m.get("roadmap")
-                )
-                cards.append(card)
-            except Exception as e:
-                logger.error(f"Error processing career match: {e}")
-                continue
-
-        logger.info(f"Returning {len(cards)} enhanced career matches for user {request.owner_id}")
-        return CareerMatchResponse(results=cards)
-
-    except HTTPException:
-        raise
-    except Exception as e:
-        logger.error(f"Career matching failed: {e}")
-        raise HTTPException(500, "Failed to process career matching.")
-
-@app.get("/api/career/roadmap/{career_title}")
-async def get_career_roadmap(career_title: str):
-    """Get career roadmap for a specific career"""
-    try:
-        roadmap = matcher.get_career_roadmap(career_title)
-        return {"career_title": career_title, "roadmap": roadmap}
-    except Exception as e:
-        logger.error(f"Failed to get career roadmap: {e}")
-        raise HTTPException(500, "Failed to get career roadmap.")
-
-@app.get("/api/career/roadmaps")
-async def get_all_roadmaps():
-    """Get all available career roadmaps"""
-    try:
-        return {"roadmaps": matcher.career_roadmaps}
-    except Exception as e:
-        logger.error(f"Failed to get roadmaps: {e}")
-        raise HTTPException(500, "Failed to get career roadmaps.")
-
-@app.post("/api/career/quiz/comprehensive-analysis")
-async def get_comprehensive_career_analysis(
-    answers: List[int],
-    user_skills: Optional[List[str]] = None
-):
-    """Get comprehensive career analysis from quiz answers with AI-powered insights"""
-    try:
-        # Validate answers
-        if len(answers) != 10:
-            raise HTTPException(400, "Need exactly 10 answers")
-        if not all(0 <= a <= 5 for a in answers):  # Changed from 1-5 to 0-5 since array indices are 0-based
-            raise HTTPException(400, "Answers must be 0-5")
-        
-        # Get comprehensive analysis with embedding-based matching
-        analysis = await matcher.generate_comprehensive_career_analysis(answers, user_skills)
-        return analysis
-    except Exception as e:
-        logger.error(f"Comprehensive career analysis failed: {e}")
-        raise HTTPException(500, "Failed to generate comprehensive analysis.")
 
 # Chatbot endpoints
 @app.post("/api/chat", response_model=ChatResponse)
@@ -649,6 +594,131 @@ async def update_user_framework_preference(user_id: str, framework: str):
     except Exception as e:
         logger.error(f"Failed to update framework preference: {e}")
         raise HTTPException(500, "Failed to update framework preference")
+
+
+# Missing helper functions from app.py
+def _generate_fallback_concept_map() -> Dict:
+    """Generate impressive fallback concept map"""
+    return {
+        "nodes": [
+            {"id": "1", "title": "API Design", "type": "concept"},
+            {"id": "2", "title": "Security", "type": "concept"},
+            {"id": "3", "title": "Performance", "type": "concept"},
+            {"id": "4", "title": "Testing", "type": "concept"},
+            {"id": "5", "title": "Deployment", "type": "concept"}
+        ],
+        "edges": [
+            {"source": "1", "target": "2", "label": "requires"},
+            {"source": "1", "target": "3", "label": "affects"},
+            {"source": "2", "target": "4", "label": "validated by"},
+            {"source": "3", "target": "5", "label": "optimized for"},
+            {"source": "4", "target": "5", "label": "ensures quality"}
+        ]
+    }
+
+# Career matching endpoints
+@app.get("/api/career/quiz", response_model=CareerQuizResponse)
+async def get_career_quiz():
+    """Get the 10 career quiz questions"""
+    try:
+        questions = matcher.get_quiz_questions()
+        quiz_questions = [
+            CareerQuizQuestion(
+                id=q["id"],
+                question=q["question"],
+                category="career_assessment",  # Default category
+                description="Career interest assessment question"  # Default description
+            )
+            for q in questions
+        ]
+        return CareerQuizResponse(questions=quiz_questions)
+    except Exception as e:
+        logger.error(f"Failed to get career quiz: {e}")
+        raise HTTPException(500, "Failed to get career quiz questions.")
+
+@app.post("/api/career/match", response_model=CareerMatchResponse)
+async def career_match(request: CareerMatchRequest):
+    """Match user quiz answers to career paths using enhanced algorithms"""
+    try:
+        # Validate answers
+        if len(request.answers) != 10:
+            raise HTTPException(400, "Need exactly 10 answers")
+        if not all(0 <= a <= 5 for a in request.answers):  # Changed from 1-5 to 0-5 since array indices are 0-based
+            raise HTTPException(400, "Answers must be 0-5")
+
+        # Get career matches using enhanced embedding-based AI capabilities
+        matches = await matcher.get_career_matches(request.answers, top_k=5)
+
+        # Convert to response format
+        cards = []
+        for m in matches:
+            try:
+                # Parse skills (comma-separated string to list)
+                skills_str = m.get("top_skills", "technical skills, problem solving, communication")
+                common_skills = [skill.strip() for skill in skills_str.split(",")][:3]
+
+                card = CareerCard(
+                    title=m["title"],
+                    salary_low=int(m["salary_low"]),
+                    salary_high=int(m["salary_high"]),
+                    growth_pct=float(m["growth_pct"]),
+                    common_skills=common_skills,
+                    day_in_life=m["day_in_life"],
+                    similarity=round(float(m["similarity"]), 3),
+                    roadmap=m.get("roadmap")
+                )
+                cards.append(card)
+            except Exception as e:
+                logger.error(f"Error processing career match: {e}")
+                continue
+
+        logger.info(f"Returning {len(cards)} enhanced career matches for user {request.owner_id}")
+        return CareerMatchResponse(results=cards)
+
+    except HTTPException:
+        raise
+    except Exception as e:
+        logger.error(f"Career matching failed: {e}")
+        raise HTTPException(500, "Failed to process career matching.")
+
+@app.get("/api/career/roadmap/{career_title}")
+async def get_career_roadmap(career_title: str):
+    """Get career roadmap for a specific career"""
+    try:
+        roadmap = matcher.get_career_roadmap(career_title)
+        return {"career_title": career_title, "roadmap": roadmap}
+    except Exception as e:
+        logger.error(f"Failed to get career roadmap: {e}")
+        raise HTTPException(500, "Failed to get career roadmap.")
+
+@app.get("/api/career/roadmaps")
+async def get_all_roadmaps():
+    """Get all available career roadmaps"""
+    try:
+        return {"roadmaps": matcher.career_roadmaps}
+    except Exception as e:
+        logger.error(f"Failed to get roadmaps: {e}")
+        raise HTTPException(500, "Failed to get career roadmaps.")
+
+@app.post("/api/career/quiz/comprehensive-analysis")
+async def get_comprehensive_career_analysis(
+    answers: List[int],
+    user_skills: Optional[List[str]] = None
+):
+    """Get comprehensive career analysis from quiz answers with AI-powered insights"""
+    try:
+        # Validate answers
+        if len(answers) != 10:
+            raise HTTPException(400, "Need exactly 10 answers")
+        if not all(0 <= a <= 5 for a in answers):  # Changed from 1-5 to 0-5 since array indices are 0-based
+            raise HTTPException(400, "Answers must be 0-5")
+        
+        # Get comprehensive analysis with embedding-based matching
+        analysis = await matcher.generate_comprehensive_career_analysis(answers, user_skills)
+        return analysis
+    except Exception as e:
+        logger.error(f"Comprehensive career analysis failed: {e}")
+        raise HTTPException(500, "Failed to generate comprehensive analysis.")
 
 @app.post("/api/lessons/{lesson_id}/complete")
 async def complete_lesson(lesson_id: int, user_id: str, progress_percentage: float = 100.0):
@@ -1492,7 +1562,7 @@ async def _generate_workflow_on_demand(lesson_id: int) -> List[str]:
         # Try to get concept map from Supabase first
         concept_map = get_lesson_concept_map(lesson_id)
         if concept_map and concept_map.get("nodes"):
-            workflow_steps = [node.get("title", "Step") for node in concept_map["nodes"]]
+            workflow_steps = [node.get("title") or node.get("label") or "Step" for node in concept_map["nodes"]]
             return workflow_steps
         
         # Generate sophisticated fallback workflow
@@ -1556,3 +1626,68 @@ def _generate_fallback_concept_map() -> Dict:
             {"source": "4", "target": "5", "label": "ensures quality"}
         ]
     }
+
+# Micro-lessons utilities
+_MICRO_LESSONS_CACHE: Optional[List[Dict]] = None
+
+def _load_micro_lessons() -> List[Dict]:
+    global _MICRO_LESSONS_CACHE
+    if _MICRO_LESSONS_CACHE is not None:
+        return _MICRO_LESSONS_CACHE
+    try:
+        data_path = Path(__file__).parent / 'data' / 'micro_lessons.json'
+        with open(data_path, 'r', encoding='utf-8') as f:
+            raw = json.load(f)
+        lessons: List[Dict] = []
+        # Flatten nested categories
+        for category, items in raw.items():
+            if isinstance(items, dict):
+                for key, ml in items.items():
+                    if isinstance(ml, dict):
+                        lesson = {
+                            "id": key,
+                            "category": category,
+                            "title": ml.get("title"),
+                            "description": ml.get("description"),
+                            "duration": ml.get("duration"),
+                            "difficulty": ml.get("difficulty"),
+                            "skills": ml.get("skills", []),
+                            "framework": ml.get("framework")
+                        }
+                        lessons.append(lesson)
+        _MICRO_LESSONS_CACHE = lessons
+        return lessons
+    except Exception as e:
+        logger.error(f"Failed to load micro_lessons.json: {e}")
+        _MICRO_LESSONS_CACHE = []
+        return _MICRO_LESSONS_CACHE
+
+def _normalize_framework_name(value: str) -> str:
+    if not value:
+        return 'generic'
+    return value.strip().lower()
+
+def _get_micro_lessons_for_framework(framework_value: str, limit: int = 6) -> List[Dict]:
+    lessons = _load_micro_lessons()
+    fw = _normalize_framework_name(framework_value)
+    # Simple mapping from enum values to micro_lesson frameworks
+    map_fw = {
+        'fastapi': 'python',
+        'react': 'javascript',
+        'nextjs': 'javascript',
+        'nodejs': 'javascript',
+        'machine_learning': 'machine_learning',
+        'docker': 'docker',
+        'kubernetes': 'kubernetes',
+        'python': 'python',
+        'sql': 'sql',
+        'devops': 'docker',
+        'frontend': 'web',
+        'backend': 'python',
+    }
+    target = map_fw.get(fw, fw)
+    filtered = [ml for ml in lessons if _normalize_framework_name(ml.get('framework')) == target]
+    if not filtered:
+        # Fallback: pick a few broadly useful lessons
+        filtered = [ml for ml in lessons if ml.get('category') in ['programming', 'data_science']]
+    return filtered[:limit]

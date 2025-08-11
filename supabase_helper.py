@@ -233,10 +233,12 @@ def get_user_progress_stats(user_id: str) -> Dict:
         return {"total_lessons": 0, "completed_lessons": 0, "completion_rate": 0.0}
 
 def get_lesson_summary(lesson_id: int) -> Optional[str]:
-    """Get summary for a specific lesson."""
+    """Get summary for a specific lesson.
+    When Supabase is unavailable, return None so upstream can generate on-demand content.
+    """
     if not SUPA:
-        logger.warning("Supabase not available. Returning dummy summary.")
-        return "Sample summary for lesson content..."
+        logger.warning("Supabase not available. No summary available (trigger on-demand generation).")
+        return None
     try:
         res = SUPA.table("lessons").select("summary").eq("id", lesson_id).execute()
         if res.data:
@@ -247,15 +249,11 @@ def get_lesson_summary(lesson_id: int) -> Optional[str]:
         return None
 
 def get_lesson_cards(lesson_id: int, card_type: str) -> List[Dict]:
-    """Get cards (bullets, flashcards, quiz) for a specific lesson."""
+    """Get cards (bullets, flashcards, quiz) for a specific lesson.
+    When Supabase is unavailable, return an empty list so upstream can generate on-demand content.
+    """
     if not SUPA:
-        logger.warning("Supabase not available. Returning dummy cards.")
-        if card_type == "bullet":
-            return [{"payload": {"text": "Sample bullet point"}}]
-        elif card_type == "flashcard":
-            return [{"payload": {"front": "Sample front", "back": "Sample back"}}]
-        elif card_type == "quiz":
-            return [{"payload": {"question": "Sample question", "options": ["A", "B", "C", "D"], "answer": "A"}}]
+        logger.warning("Supabase not available. No cards available (trigger on-demand generation).")
         return []
     try:
         res = SUPA.table("lesson_metadata").select("*").eq("lesson_id", lesson_id).eq("card_type", card_type).execute()
@@ -265,10 +263,12 @@ def get_lesson_cards(lesson_id: int, card_type: str) -> List[Dict]:
         return []
 
 def get_lesson_concept_map(lesson_id: int) -> Optional[Dict]:
-    """Get concept map for a specific lesson."""
+    """Get concept map for a specific lesson.
+    When Supabase is unavailable, return None so upstream can generate on-demand content.
+    """
     if not SUPA:
-        logger.warning("Supabase not available. Returning dummy concept map.")
-        return {"nodes": [], "edges": []}
+        logger.warning("Supabase not available. No concept map (trigger on-demand generation).")
+        return None
     try:
         res = SUPA.table("concept_maps").select("*").eq("lesson_id", lesson_id).execute()
         if res.data:
@@ -279,17 +279,12 @@ def get_lesson_concept_map(lesson_id: int) -> Optional[Dict]:
         return None
 
 def get_lesson_by_id(lesson_id: int) -> Optional[Dict]:
-    """Get complete lesson data by ID."""
+    """Get complete lesson data by ID.
+    When Supabase is unavailable, return None so upstream can generate on-demand content.
+    """
     if not SUPA:
-        logger.warning("Supabase not available. Returning dummy lesson.")
-        return {
-            "id": lesson_id,
-            "title": "Sample Lesson",
-            "summary": "Sample lesson summary...",
-            "framework": "generic",
-            "explanation_level": "intern",
-            "full_text": "This is a test PDF content for demonstration purposes."
-        }
+        logger.warning("Supabase not available. No lesson data (trigger on-demand generation).")
+        return None
     try:
         res = SUPA.table("lessons").select("*").eq("id", lesson_id).execute()
         if res.data:
@@ -300,10 +295,12 @@ def get_lesson_by_id(lesson_id: int) -> Optional[Dict]:
         return None
 
 def get_lesson_full_text(lesson_id: int) -> Optional[str]:
-    """Get the full text content of a lesson for chatbot access."""
+    """Get the full text content of a lesson for chatbot access.
+    When Supabase is unavailable, return None so callers can degrade gracefully.
+    """
     if not SUPA:
-        logger.warning("Supabase not available. Returning dummy full text.")
-        return "This is a test PDF content for demonstration purposes."
+        logger.warning("Supabase not available. No full_text (use summary or uploaded text where available).")
+        return None
     
     try:
         # First try to get full_text if the column exists
