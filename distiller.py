@@ -1,4 +1,4 @@
-from typing import List, Dict, Optional
+from typing import List, Dict, Optional, Tuple
 from pathlib import Path
 import io, os, json, asyncio
 import fitz  # PyMuPDF
@@ -8,6 +8,7 @@ from schemas import ExplanationLevel, Framework
 import uuid
 from datetime import datetime
 from dotenv import load_dotenv
+from collections import OrderedDict
 
 # Load environment variables
 load_dotenv()
@@ -16,7 +17,58 @@ CHUNK_WORDS = 400
 OVERLAP = 50
 
 # In-memory conversation storage (replace with database in production)
-conversation_store = {}
+conversation_store: Dict[str, Dict] = {}
+
+# In-memory lesson cache with TTL and capacity (LRU)
+# Structure: { lesson_id: { 'summary': str, 'bullets': List[str], 'flashcards': List[Dict], 'quiz': List[Dict], 'concept_map': Dict, 'full_text': str, 'title': str, 'framework': str, 'cached_at': iso } }
+lesson_store: "OrderedDict[str, Dict]" = OrderedDict()
+LESSON_CACHE_TTL_SECONDS = 60 * 60 * 2  # 2 hours
+LESSON_CACHE_CAPACITY = 50
+
+def _lesson_cache_evict_if_needed():
+    while len(lesson_store) > LESSON_CACHE_CAPACITY:
+        lesson_store.popitem(last=False)
+
+def _is_expired(record: Dict) -> bool:
+    try:
+        ts = record.get("cached_at")
+        if not ts:
+            return False
+        cached = datetime.fromisoformat(ts)
+        age = (datetime.utcnow() - cached).total_seconds()
+        return age > LESSON_CACHE_TTL_SECONDS
+    except Exception:
+        return False
+
+def set_lesson_cache(lesson_id: str, data: Dict):
+    data = dict(data)
+    data["cached_at"] = datetime.utcnow().isoformat()
+    # Move to end (LRU)
+    if lesson_id in lesson_store:
+        lesson_store.pop(lesson_id, None)
+    lesson_store[lesson_id] = data
+    _lesson_cache_evict_if_needed()
+
+def get_lesson_cache(lesson_id: str) -> Optional[Dict]:
+    rec = lesson_store.get(lesson_id)
+    if not rec:
+        return None
+    if _is_expired(rec):
+        lesson_store.pop(lesson_id, None)
+        return None
+    # Touch LRU
+    lesson_store.pop(lesson_id, None)
+    lesson_store[lesson_id] = rec
+    return rec
+
+# Deduplication map for content hashes
+content_hash_to_lesson_id: Dict[str, int] = {}
+
+def _hash_text(text: str) -> str:
+    import hashlib
+    h = hashlib.sha256()
+    h.update(text.encode("utf-8", errors="ignore"))
+    return h.hexdigest()
 
 # Enhanced conversation metadata for better UX
 conversation_metadata = {
@@ -255,6 +307,81 @@ def find_similar_content(query_embedding: List[float], content_embeddings: List[
     # Sort by similarity (descending) and return top_k results
     similarities.sort(key=lambda x: x[1], reverse=True)
     return similarities[:top_k]
+
+# Micro-lesson semantic index
+_MICRO_LESSONS_RAW: List[Dict] = []
+_MICRO_LESSONS_EMBEDS: List[List[float]] = []
+
+def _load_micro_lessons_raw() -> List[Dict]:
+    global _MICRO_LESSONS_RAW
+    if _MICRO_LESSONS_RAW:
+        return _MICRO_LESSONS_RAW
+    try:
+        data_path = Path(__file__).parent / 'data' / 'micro_lessons.json'
+        with open(data_path, 'r', encoding='utf-8') as f:
+            raw = json.load(f)
+        lessons: List[Dict] = []
+        for category, items in raw.items():
+            if isinstance(items, dict):
+                for key, ml in items.items():
+                    if isinstance(ml, dict):
+                        lesson = {
+                            "id": key,
+                            "category": category,
+                            "title": ml.get("title"),
+                            "description": ml.get("description"),
+                            "duration": ml.get("duration"),
+                            "difficulty": ml.get("difficulty"),
+                            "skills": ml.get("skills", []),
+                            "framework": ml.get("framework")
+                        }
+                        lessons.append(lesson)
+        _MICRO_LESSONS_RAW = lessons
+        return lessons
+    except Exception as e:
+        logger.error(f"Failed to load micro_lessons.json: {e}")
+        _MICRO_LESSONS_RAW = []
+        return _MICRO_LESSONS_RAW
+
+async def precompute_micro_lessons_embeddings() -> Tuple[int, int]:
+    """Precompute embeddings for micro-lessons (title + description)."""
+    global _MICRO_LESSONS_EMBEDS
+    lessons = _load_micro_lessons_raw()
+    if not lessons:
+        _MICRO_LESSONS_EMBEDS = []
+        return 0, 0
+    texts = [f"{ml.get('title','')}\n{ml.get('description','')}" for ml in lessons]
+    try:
+        # Batch using cohere_embed in chunks to avoid size limits
+        embeds: List[List[float]] = []
+        batch_size = 32
+        for i in range(0, len(texts), batch_size):
+            batch = texts[i:i+batch_size]
+            e = await cohere_embed(batch)
+            embeds.extend([_normalize_embedding(v) for v in e])
+        _MICRO_LESSONS_EMBEDS = embeds
+        return len(lessons), len(embeds)
+    except Exception as e:
+        logger.error(f"Failed micro-lesson precompute: {e}")
+        _MICRO_LESSONS_EMBEDS = []
+        return len(lessons), 0
+
+async def select_top_micro_lessons_by_text(text: str, top_k: int = 6) -> List[Dict]:
+    """Select top micro-lessons for the given text using cosine similarity."""
+    if not text:
+        return []
+    lessons = _load_micro_lessons_raw()
+    if not lessons:
+        return []
+    if not _MICRO_LESSONS_EMBEDS:
+        await precompute_micro_lessons_embeddings()
+    if not _MICRO_LESSONS_EMBEDS:
+        return []
+    q = await generate_content_embedding(text)
+    sims = find_similar_content(q, _MICRO_LESSONS_EMBEDS, top_k=top_k)
+    indices = [i for i, _ in sims]
+    results = [lessons[i] for i in indices if i < len(lessons)]
+    return results
 
 async def generate_content_embedding(text: str) -> List[float]:
     """
@@ -1268,9 +1395,11 @@ async def process_file_for_chat(file_path: Path, user_id: str, conversation_id: 
         # Extract text from file
         text = pdf_to_text(file_path)
         chunks = chunk_text(text)
-        
-        # Generate summary for context
-        summary = await map_reduce_summary(chunks, explanation_level)
+
+        # Concurrency: embeddings + summary in parallel
+        summary_task = asyncio.create_task(map_reduce_summary(chunks, explanation_level))
+        embeds_task = asyncio.create_task(embed_chunks(chunks))
+        summary, embeds = await asyncio.gather(summary_task, embeds_task)
         
         # Detect frameworks with enhanced detection
         framework_detection = await detect_multiple_frameworks(text)
@@ -1312,13 +1441,20 @@ async def process_file_for_chat(file_path: Path, user_id: str, conversation_id: 
             except ValueError:
                 framework_enum = Framework.GENERIC
         
-        # Insert lesson to get lesson_id (including full text for chatbot access)
-        lesson_id = insert_lesson(user_id, pdf_name, summary, framework_enum, explanation_level, text)
+        # Deduplicate uploads by content hash
+        txt_hash = _hash_text(text)
+        existing_id = content_hash_to_lesson_id.get(txt_hash)
+        if existing_id:
+            lesson_id = existing_id
+        else:
+            # Insert lesson to get lesson_id (including full text for chatbot access)
+            lesson_id = insert_lesson(user_id, pdf_name, summary, framework_enum, explanation_level, text)
+            content_hash_to_lesson_id[txt_hash] = lesson_id
         
-        # Generate additional content for database storage
-        qa = await gen_flashcards_quiz(summary, explanation_level)
-        concept_map = await generate_concept_map(summary)
-        embeds = await embed_chunks(chunks)
+        # Generate additional content concurrently
+        qa_task = asyncio.create_task(gen_flashcards_quiz(summary, explanation_level))
+        concept_task = asyncio.create_task(generate_concept_map(summary))
+        qa, concept_map = await asyncio.gather(qa_task, concept_task)
         
         # Insert concept map
         insert_concept_map(lesson_id, concept_map)
@@ -1349,6 +1485,18 @@ async def process_file_for_chat(file_path: Path, user_id: str, conversation_id: 
             })
         
         insert_cards(lesson_id, card_rows)
+
+        # Populate in-memory lesson store for Learn page
+        set_lesson_cache(str(lesson_id), {
+            "title": pdf_name,
+            "summary": summary,
+            "full_text": text,
+            "framework": framework_enum.value if hasattr(framework_enum, 'value') else str(framework_enum),
+            "bullets": [b.strip() for b in summary.split("•") if b.strip()],
+            "flashcards": qa.get("flashcards", []),
+            "quiz": qa.get("quiz", []),
+            "concept_map": concept_map
+        })
         
         # Store lesson_id in conversation metadata for future reference
         conversation_store[conv_id]["metadata"]["lesson_id"] = lesson_id

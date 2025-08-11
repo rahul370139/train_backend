@@ -252,6 +252,14 @@ async def lesson_action(lesson_id: int, action: str):
                 # Generate summary on-demand if not found in Supabase
                 logger.info(f"Summary not found in Supabase for lesson {lesson_id}, generating on-demand")
                 summary_content = await _generate_summary_on_demand(lesson_id)
+                # Persist in background if possible
+                try:
+                    from distiller import get_lesson_cache, set_lesson_cache
+                    cached = get_lesson_cache(str(lesson_id)) or {}
+                    cached["bullets"] = summary_content
+                    set_lesson_cache(str(lesson_id), cached)
+                except Exception:
+                    pass
                 return {"content": summary_content}
         
         elif action == "quiz":
@@ -263,6 +271,13 @@ async def lesson_action(lesson_id: int, action: str):
                 # Generate quiz on-demand if not found in Supabase
                 logger.info(f"Quiz not found in Supabase for lesson {lesson_id}, generating on-demand")
                 quiz_content = await _generate_quiz_on_demand(lesson_id)
+                try:
+                    from distiller import get_lesson_cache, set_lesson_cache
+                    cached = get_lesson_cache(str(lesson_id)) or {}
+                    cached["quiz"] = quiz_content
+                    set_lesson_cache(str(lesson_id), cached)
+                except Exception:
+                    pass
                 return {"content": {"questions": quiz_content}}
         
         elif action == "flashcards":
@@ -274,6 +289,13 @@ async def lesson_action(lesson_id: int, action: str):
                 # Generate flashcards on-demand if not found in Supabase
                 logger.info(f"Flashcards not found in Supabase for lesson {lesson_id}, generating on-demand")
                 flashcard_content = await _generate_flashcards_on_demand(lesson_id)
+                try:
+                    from distiller import get_lesson_cache, set_lesson_cache
+                    cached = get_lesson_cache(str(lesson_id)) or {}
+                    cached["flashcards"] = flashcard_content
+                    set_lesson_cache(str(lesson_id), cached)
+                except Exception:
+                    pass
                 return {"content": {"cards": flashcard_content}}
         
         elif action == "lesson":
@@ -308,6 +330,13 @@ async def lesson_action(lesson_id: int, action: str):
                 micro_lessons = _get_micro_lessons_for_framework(framework_value)
                 if isinstance(lesson_content, dict):
                     lesson_content["micro_lessons"] = micro_lessons
+                try:
+                    from distiller import get_lesson_cache, set_lesson_cache
+                    cached = get_lesson_cache(str(lesson_id)) or {}
+                    cached["micro_lessons"] = micro_lessons
+                    set_lesson_cache(str(lesson_id), cached)
+                except Exception:
+                    pass
                 return {"content": lesson_content}
         
         elif action == "workflow":
@@ -320,6 +349,13 @@ async def lesson_action(lesson_id: int, action: str):
                 # Generate workflow on-demand if not found in Supabase
                 logger.info(f"Workflow not found in Supabase for lesson {lesson_id}, generating on-demand")
                 workflow_content = await _generate_workflow_on_demand(lesson_id)
+                try:
+                    from distiller import get_lesson_cache, set_lesson_cache
+                    cached = get_lesson_cache(str(lesson_id)) or {}
+                    cached["workflow"] = workflow_content
+                    set_lesson_cache(str(lesson_id), cached)
+                except Exception:
+                    pass
                 return {"content": {"workflow": workflow_content}}
         
         else:
@@ -355,12 +391,20 @@ async def get_lesson_summary_chat(lesson_id: int, user_id: str):
         raise HTTPException(500, f"Failed to get summary for lesson {lesson_id}")
 
 @app.get("/api/chat/lesson/{lesson_id}/content")
-async def get_lesson_content_for_chat(lesson_id: int, user_id: str):
+async def get_lesson_content_for_chat(lesson_id: int, user_id: Optional[str] = None):
     """Get comprehensive lesson content for AI chatbot access"""
     try:
+        # Prefer in-memory cache first (populated on upload)
+        try:
+            from distiller import lesson_store
+        except Exception:
+            lesson_store = {}
+
+        cached = lesson_store.get(str(lesson_id)) if isinstance(lesson_store, dict) else None
+
         # Get lesson data
-        lesson_data = get_lesson_by_id(lesson_id)
-        summary = get_lesson_summary(lesson_id)
+        lesson_data = get_lesson_by_id(lesson_id) or cached
+        summary = get_lesson_summary(lesson_id) or (cached.get("summary") if cached else None)
         
         # Generate content on-demand if not available
         if not summary:
@@ -372,6 +416,8 @@ async def get_lesson_content_for_chat(lesson_id: int, user_id: str):
         quiz_cards = get_lesson_cards(lesson_id, "quiz")
         if quiz_cards:
             quiz_questions = [card["payload"] for card in quiz_cards]
+        elif cached and cached.get("quiz"):
+            quiz_questions = cached.get("quiz")
         else:
             quiz_questions = await _generate_quiz_on_demand(lesson_id)
         
@@ -379,6 +425,8 @@ async def get_lesson_content_for_chat(lesson_id: int, user_id: str):
         flashcard_cards = get_lesson_cards(lesson_id, "flashcard")
         if flashcard_cards:
             flashcards = [card["payload"] for card in flashcard_cards]
+        elif cached and cached.get("flashcards"):
+            flashcards = cached.get("flashcards")
         else:
             flashcards = await _generate_flashcards_on_demand(lesson_id)
         
@@ -386,11 +434,11 @@ async def get_lesson_content_for_chat(lesson_id: int, user_id: str):
         workflow_content = await _generate_workflow_on_demand(lesson_id)
         
         # Get concept map
-        concept_map = get_lesson_concept_map(lesson_id) or _generate_fallback_concept_map()
+        concept_map = get_lesson_concept_map(lesson_id) or (cached.get("concept_map") if cached else None) or _generate_fallback_concept_map()
         
         return {
             "lesson_id": lesson_id,
-            "title": lesson_data.get("title", "API Development Fundamentals") if lesson_data else "API Development Fundamentals",
+            "title": (lesson_data.get("title") if isinstance(lesson_data, dict) else None) or "API Development Fundamentals",
             "summary": summary_bullets,
             "quiz": quiz_questions,
             "flashcards": flashcards,
