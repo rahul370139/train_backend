@@ -80,6 +80,13 @@ class ChatResponse(BaseModel):
     lesson_ingested: Optional[bool] = Field(default=None, description="Whether a lesson was ingested")
     title: Optional[str] = Field(default=None, description="Lesson title")
     framework: Optional[str] = Field(default=None, description="Lesson framework")
+    # NEW: Structured payloads for interactive rendering in chat
+    type: Optional[str] = Field(default=None, description="Type of generated content: chat|lesson|quiz|flashcards|workflow|summary|help|explanation")
+    quiz_data: Optional[Dict[str, Any]] = Field(default=None, description="Quiz payload with { questions: [...] }")
+    flashcard_data: Optional[Dict[str, Any]] = Field(default=None, description="Flashcard payload with { cards: [...] }")
+    lesson_data: Optional[Dict[str, Any]] = Field(default=None, description="Lesson/microlearning payload")
+    summary_data: Optional[Dict[str, Any]] = Field(default=None, description="Summary payload")
+    workflow_data: Optional[Dict[str, Any]] = Field(default=None, description="Workflow payload")
 
 class ChatWithFileRequest(BaseModel):
     user_id: str

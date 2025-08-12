@@ -991,12 +991,14 @@ async def _handle_quiz_generation(message: str, conv_id: str, file_context: Opti
         
         add_message_to_conversation(conv_id, "assistant", response)
         
+        # Normalize shape to match /api/lesson/{id}/quiz -> { content: { questions: [...] } }
+        normalized_quiz = {"questions": qa.get("quiz", qa.get("questions", []))}
         return {
             "response": response,
             "conversation_id": conv_id,
             "message_id": str(uuid.uuid4()),
             "timestamp": datetime.utcnow().isoformat(),
-            "quiz_data": qa,
+            "quiz_data": normalized_quiz,
             "type": "quiz"
         }
         
@@ -1028,12 +1030,14 @@ async def _handle_flashcard_generation(message: str, conv_id: str, file_context:
         
         add_message_to_conversation(conv_id, "assistant", response)
         
+        # Normalize shape to match /api/lesson/{id}/flashcards -> { content: { cards: [...] } }
+        normalized_cards = {"cards": qa.get("flashcards", qa.get("cards", []))}
         return {
             "response": response,
             "conversation_id": conv_id,
             "message_id": str(uuid.uuid4()),
             "timestamp": datetime.utcnow().isoformat(),
-            "flashcard_data": {"cards": qa.get("flashcards", [])},
+            "flashcard_data": normalized_cards,
             "type": "flashcards"
         }
         

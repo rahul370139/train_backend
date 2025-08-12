@@ -243,110 +243,128 @@ async def lesson_action(lesson_id: int, action: str):
     """Handle different lesson actions like summary, quiz, etc."""
     try:
         if action == "summary":
+            # 1) Prefer in-memory cache populated during upload
+            try:
+                from distiller import get_lesson_cache
+                cached = get_lesson_cache(str(lesson_id)) or {}
+                if cached.get("bullets"):
+                    return {"content": cached.get("bullets")}
+            except Exception:
+                pass
+            # 2) Then Supabase
             summary = get_lesson_summary(lesson_id)
             if summary:
-                # Format summary as bullet points
                 bullets = [b.strip() for b in summary.split("•") if b.strip()]
                 return {"content": bullets}
-            else:
-                # Generate summary on-demand if not found in Supabase
-                logger.info(f"Summary not found in Supabase for lesson {lesson_id}, generating on-demand")
-                summary_content = await _generate_summary_on_demand(lesson_id)
-                # Persist in background if possible
-                try:
-                    from distiller import get_lesson_cache, set_lesson_cache
-                    cached = get_lesson_cache(str(lesson_id)) or {}
-                    cached["bullets"] = summary_content
-                    set_lesson_cache(str(lesson_id), cached)
-                except Exception:
-                    pass
-                return {"content": summary_content}
+            # 3) Finally, generate on-demand
+            logger.info(f"Summary not found for lesson {lesson_id}, generating on-demand")
+            summary_content = await _generate_summary_on_demand(lesson_id)
+            try:
+                from distiller import set_lesson_cache
+                cached = cached if isinstance(cached, dict) else {}
+                cached["bullets"] = summary_content
+                set_lesson_cache(str(lesson_id), cached)
+            except Exception:
+                pass
+            return {"content": summary_content}
         
         elif action == "quiz":
+            # 1) Prefer in-memory cache
+            try:
+                from distiller import get_lesson_cache
+                cached = get_lesson_cache(str(lesson_id)) or {}
+                if cached.get("quiz"):
+                    return {"content": {"questions": cached.get("quiz")}}
+            except Exception:
+                pass
+            # 2) Supabase
             quiz_cards = get_lesson_cards(lesson_id, "quiz")
             if quiz_cards:
                 questions = [card["payload"] for card in quiz_cards]
                 return {"content": {"questions": questions}}
-            else:
-                # Generate quiz on-demand if not found in Supabase
-                logger.info(f"Quiz not found in Supabase for lesson {lesson_id}, generating on-demand")
-                quiz_content = await _generate_quiz_on_demand(lesson_id)
-                try:
-                    from distiller import get_lesson_cache, set_lesson_cache
-                    cached = get_lesson_cache(str(lesson_id)) or {}
-                    cached["quiz"] = quiz_content
-                    set_lesson_cache(str(lesson_id), cached)
-                except Exception:
-                    pass
-                return {"content": {"questions": quiz_content}}
+            # 3) On-demand
+            logger.info(f"Quiz not found for lesson {lesson_id}, generating on-demand")
+            quiz_content = await _generate_quiz_on_demand(lesson_id)
+            try:
+                from distiller import set_lesson_cache
+                cached = cached if isinstance(cached, dict) else {}
+                cached["quiz"] = quiz_content
+                set_lesson_cache(str(lesson_id), cached)
+            except Exception:
+                pass
+            return {"content": {"questions": quiz_content}}
         
         elif action == "flashcards":
+            # 1) Prefer in-memory cache
+            try:
+                from distiller import get_lesson_cache
+                cached = get_lesson_cache(str(lesson_id)) or {}
+                if cached.get("flashcards"):
+                    return {"content": {"cards": cached.get("flashcards")}}
+            except Exception:
+                pass
+            # 2) Supabase
             flashcard_cards = get_lesson_cards(lesson_id, "flashcard")
             if flashcard_cards:
                 cards = [card["payload"] for card in flashcard_cards]
                 return {"content": {"cards": cards}}
-            else:
-                # Generate flashcards on-demand if not found in Supabase
-                logger.info(f"Flashcards not found in Supabase for lesson {lesson_id}, generating on-demand")
-                flashcard_content = await _generate_flashcards_on_demand(lesson_id)
-                try:
-                    from distiller import get_lesson_cache, set_lesson_cache
-                    cached = get_lesson_cache(str(lesson_id)) or {}
-                    cached["flashcards"] = flashcard_content
-                    set_lesson_cache(str(lesson_id), cached)
-                except Exception:
-                    pass
-                return {"content": {"cards": flashcard_content}}
+            # 3) On-demand
+            logger.info(f"Flashcards not found for lesson {lesson_id}, generating on-demand")
+            flashcard_content = await _generate_flashcards_on_demand(lesson_id)
+            try:
+                from distiller import set_lesson_cache
+                cached = cached if isinstance(cached, dict) else {}
+                cached["flashcards"] = flashcard_content
+                set_lesson_cache(str(lesson_id), cached)
+            except Exception:
+                pass
+            return {"content": {"cards": flashcard_content}}
         
         elif action == "lesson":
-            lesson_data = get_lesson_by_id(lesson_id)
-            if lesson_data:
-                # Get all bullet points
-                bullet_cards = get_lesson_cards(lesson_id, "bullet")
-                bullets = [card["payload"]["text"] for card in bullet_cards if "payload" in card and "text" in card["payload"]]
-                
-                # Get concept map
-                concept_map = get_lesson_concept_map(lesson_id)
-                # Build micro-lessons from detected framework
-                framework_value = lesson_data.get("framework", "generic")
-                # Retrieval-based lesson plan
-                try:
-                    from distiller import generate_retrieval_based_lesson_plan_for_lesson
-                    lesson_plan = await generate_retrieval_based_lesson_plan_for_lesson(lesson_id, ExplanationLevel.INTERN, framework_value)
-                except Exception:
-                    lesson_plan = {"title": "Learning Plan", "learning_topics": [], "learning_path": []}
-                
-                return {
-                    "content": {
-                        "title": lesson_data.get("title", "Untitled Lesson"),
-                        "summary": lesson_data.get("summary", ""),
-                        "framework": lesson_data.get("framework", "generic"),
-                        "bullets": bullets,
-                        "concept_map": concept_map,
-                        "lesson_plan": lesson_plan
-                    }
-                }
+            # 1) Prefer in-memory cache
+            try:
+                from distiller import get_lesson_cache
+                cached = get_lesson_cache(str(lesson_id)) or {}
+            except Exception:
+                cached = {}
+            # 2) Supabase lesson data
+            lesson_data = get_lesson_by_id(lesson_id) or {}
+            # bullets
+            bullets = []
+            if cached.get("bullets"):
+                bullets = cached.get("bullets")
             else:
-                # Generate lesson content on-demand if not found in Supabase
-                logger.info(f"Lesson not found in Supabase for lesson {lesson_id}, generating on-demand")
-                lesson_content = await _generate_lesson_on_demand(lesson_id)
-                # Retrieval-based lesson plan
-                framework_value = (lesson_content or {}).get("framework", "generic")
-                try:
-                    from distiller import generate_retrieval_based_lesson_plan_for_lesson
-                    lesson_plan = await generate_retrieval_based_lesson_plan_for_lesson(lesson_id, ExplanationLevel.INTERN, framework_value)
-                except Exception:
-                    lesson_plan = {"title": "Learning Plan", "learning_topics": [], "learning_path": []}
-                if isinstance(lesson_content, dict):
-                    lesson_content["lesson_plan"] = lesson_plan
-                try:
-                    from distiller import get_lesson_cache, set_lesson_cache
-                    cached = get_lesson_cache(str(lesson_id)) or {}
-                    cached["lesson_plan"] = lesson_plan
-                    set_lesson_cache(str(lesson_id), cached)
-                except Exception:
-                    pass
-                return {"content": lesson_content}
+                bullet_cards = get_lesson_cards(lesson_id, "bullet")
+                bullets = [card.get("payload", {}).get("text") for card in bullet_cards if card.get("payload", {}).get("text")]
+            # concept map
+            concept_map = cached.get("concept_map") or get_lesson_concept_map(lesson_id)
+            framework_value = (lesson_data.get("framework") if isinstance(lesson_data, dict) else None) or cached.get("framework") or "generic"
+            # Retrieval-based lesson plan
+            try:
+                from distiller import generate_retrieval_based_lesson_plan_for_lesson
+                lesson_plan = await generate_retrieval_based_lesson_plan_for_lesson(lesson_id, ExplanationLevel.INTERN, framework_value)
+            except Exception:
+                lesson_plan = {"title": "Learning Plan", "learning_topics": [], "learning_path": []}
+            # Title and summary
+            title = (lesson_data.get("title") if isinstance(lesson_data, dict) else None) or cached.get("title") or "Untitled Lesson"
+            summary_val = (lesson_data.get("summary") if isinstance(lesson_data, dict) else None) or cached.get("summary") or ""
+            content = {
+                "title": title,
+                "summary": summary_val,
+                "framework": framework_value,
+                "bullets": bullets,
+                "concept_map": concept_map,
+                "lesson_plan": lesson_plan
+            }
+            # Save plan in cache
+            try:
+                from distiller import set_lesson_cache
+                tmp = cached if isinstance(cached, dict) else {}
+                tmp["lesson_plan"] = lesson_plan
+                set_lesson_cache(str(lesson_id), tmp)
+            except Exception:
+                pass
+            return {"content": content}
         
         elif action == "workflow":
             # For workflow, we'll generate a simple workflow from the concept map
@@ -1526,15 +1544,33 @@ async def get_dashboard_achievements(user_id: str):
 async def _generate_quiz_on_demand(lesson_id: int) -> List[Dict]:
     """Generate quiz questions on-demand when Supabase data is not available"""
     try:
-        # Get lesson summary to generate relevant quiz questions
-        summary = get_lesson_summary(lesson_id)
+        # Prefer cached summary and retrieval context for better quality (same as chat)
+        retrieval = ""
+        cached_summary = None
+        try:
+            from distiller import get_lesson_cache, generate_content_embedding, find_similar_content
+            cached = get_lesson_cache(str(lesson_id)) or {}
+            chunks = cached.get("chunks") or []
+            embeds = cached.get("chunk_embeddings") or []
+            cached_summary = cached.get("summary")
+            if chunks and embeds:
+                # Build retrieval using summary text as query
+                q = cached_summary or "Generate quiz from the lesson"
+                q_embed = await generate_content_embedding(q)
+                sims = find_similar_content(q_embed, embeds, top_k=6)
+                top_indices = [i for i, _ in sims]
+                top_texts = [chunks[i] for i in top_indices if i < len(chunks)]
+                retrieval = "\n\n".join(top_texts)
+        except Exception:
+            pass
+
+        # Get lesson summary (fallback to Supabase if not in cache)
+        summary = cached_summary or get_lesson_summary(lesson_id)
         if not summary:
-            # Generate a basic quiz based on common programming concepts
             return _generate_fallback_quiz()
-        
-        # Use the distiller's quiz generation with the summary
+
         from distiller import gen_flashcards_quiz, ExplanationLevel
-        quiz_data = await gen_flashcards_quiz(summary, ExplanationLevel.INTERN)
+        quiz_data = await gen_flashcards_quiz(summary, ExplanationLevel.INTERN, retrieval_context=retrieval)
         return quiz_data.get("quiz", _generate_fallback_quiz())
         
     except Exception as e:
@@ -1544,15 +1580,32 @@ async def _generate_quiz_on_demand(lesson_id: int) -> List[Dict]:
 async def _generate_flashcards_on_demand(lesson_id: int) -> List[Dict]:
     """Generate flashcards on-demand when Supabase data is not available"""
     try:
-        # Get lesson summary to generate relevant flashcards
-        summary = get_lesson_summary(lesson_id)
+        # Prefer cached summary and retrieval context for better quality (same as chat)
+        retrieval = ""
+        cached_summary = None
+        try:
+            from distiller import get_lesson_cache, generate_content_embedding, find_similar_content
+            cached = get_lesson_cache(str(lesson_id)) or {}
+            chunks = cached.get("chunks") or []
+            embeds = cached.get("chunk_embeddings") or []
+            cached_summary = cached.get("summary")
+            if chunks and embeds:
+                q = cached_summary or "Create flashcards from the lesson"
+                q_embed = await generate_content_embedding(q)
+                sims = find_similar_content(q_embed, embeds, top_k=6)
+                top_indices = [i for i, _ in sims]
+                top_texts = [chunks[i] for i in top_indices if i < len(chunks)]
+                retrieval = "\n\n".join(top_texts)
+        except Exception:
+            pass
+
+        # Get lesson summary (fallback to Supabase if not in cache)
+        summary = cached_summary or get_lesson_summary(lesson_id)
         if not summary:
-            # Generate basic flashcards based on common programming concepts
             return _generate_fallback_flashcards()
-        
-        # Use the distiller's flashcard generation with the summary
+
         from distiller import gen_flashcards_quiz, ExplanationLevel
-        flashcard_data = await gen_flashcards_quiz(summary, ExplanationLevel.INTERN)
+        flashcard_data = await gen_flashcards_quiz(summary, ExplanationLevel.INTERN, retrieval_context=retrieval)
         return flashcard_data.get("flashcards", _generate_fallback_flashcards())
         
     except Exception as e:
