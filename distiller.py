@@ -147,14 +147,14 @@ async def call_groq(messages: List[Dict]) -> str:
         "stream": False
     }
 
-    # Retry with basic backoff on rate limits
-    max_retries = 3
+    # Retry with basic backoff on rate limits (kept minimal for responsiveness)
+    max_retries = 1
     backoff = 1.5
     attempt = 0
     async with _LLM_SEMAPHORE:
         while True:
             try:
-                async with httpx.AsyncClient(timeout=30.0) as client:
+                async with httpx.AsyncClient(timeout=12.0) as client:
                     res = await client.post(url, headers=headers, json=payload)
                     res.raise_for_status()
                     response_data = res.json()
@@ -879,20 +879,30 @@ async def process_chat_message(user_id: str, message: str, conversation_id: Opti
         # Check for special commands
         message_lower = message.lower().strip()
         
-        # Enhanced command detection
-        if any(cmd in message_lower for cmd in ["create lesson", "generate lesson", "make lesson", "lesson about", "create microlearning"]):
+        # Enhanced command detection (broader patterns: singular/plural variants)
+        if any(cmd in message_lower for cmd in [
+            "create lesson", "generate lesson", "make lesson", "lesson about", "create microlearning", "create a lesson", "make a lesson"
+        ]):
             return await _handle_lesson_generation(message, conv_id, file_context, explanation_level)
         
-        elif any(cmd in message_lower for cmd in ["create quiz", "generate quiz", "make quiz", "quiz about"]):
+        elif any(cmd in message_lower for cmd in [
+            "create quiz", "generate quiz", "make quiz", "quiz about", "quiz questions", "more quiz", "more questions"
+        ]):
             return await _handle_quiz_generation(message, conv_id, file_context, explanation_level)
         
-        elif any(cmd in message_lower for cmd in ["create flashcards", "generate flashcards", "make flashcards", "flashcards about"]):
+        elif any(cmd in message_lower for cmd in [
+            "create flashcards", "generate flashcards", "make flashcards", "flashcards about", "flashcard", "more flashcards", "more cards"
+        ]):
             return await _handle_flashcard_generation(message, conv_id, file_context, explanation_level)
         
-        elif any(cmd in message_lower for cmd in ["create workflow", "generate workflow", "make diagram", "create chart", "workflow about"]):
+        elif any(cmd in message_lower for cmd in [
+            "create workflow", "generate workflow", "make diagram", "create chart", "workflow about", "diagram", "flowchart"
+        ]):
             return await _handle_workflow_generation(message, conv_id, file_context, explanation_level)
         
-        elif any(cmd in message_lower for cmd in ["create summary", "generate summary", "make summary", "summarize", "bullet points"]):
+        elif any(cmd in message_lower for cmd in [
+            "create summary", "generate summary", "make summary", "summarize", "bullet points", "summary"
+        ]):
             return await _handle_summary_generation(message, conv_id, file_context, explanation_level)
         
         elif any(cmd in message_lower for cmd in ["explain like 5", "explain like 15", "explain like senior", "explain for beginner", "explain for expert"]):
@@ -1281,7 +1291,16 @@ async def _handle_workflow_generation(message: str, conv_id: str, file_context: 
         
         messages = [{"role": "user", "content": prompt}]
         response = await call_groq(messages)
-        workflow_data = json.loads(response)
+        parsed = _parse_json_safely(response)
+        workflow_data = parsed if isinstance(parsed, dict) else {
+            "title": f"Workflow: {topic}",
+            "description": "Generated workflow",
+            "type": "flowchart",
+            "mermaid_code": "graph TD\nA[Start]-->B[Process]-->C[End]",
+            "nodes": [],
+            "edges": [],
+            "steps": []
+        }
         response_text = f"I've created a workflow for {topic}! Here's what I've prepared:\n\n**{workflow_data['title']}**\n{workflow_data['description']}"
         
         add_message_to_conversation(conv_id, "assistant", response_text)
