@@ -309,7 +309,12 @@ async def lesson_action(lesson_id: int, action: str):
                 concept_map = get_lesson_concept_map(lesson_id)
                 # Build micro-lessons from detected framework
                 framework_value = lesson_data.get("framework", "generic")
-                micro_lessons = _get_micro_lessons_for_framework(framework_value)
+                # Retrieval-based lesson plan
+                try:
+                    from distiller import generate_retrieval_based_lesson_plan_for_lesson
+                    lesson_plan = await generate_retrieval_based_lesson_plan_for_lesson(lesson_id, ExplanationLevel.INTERN, framework_value)
+                except Exception:
+                    lesson_plan = {"title": "Learning Plan", "learning_topics": [], "learning_path": []}
                 
                 return {
                     "content": {
@@ -318,22 +323,26 @@ async def lesson_action(lesson_id: int, action: str):
                         "framework": lesson_data.get("framework", "generic"),
                         "bullets": bullets,
                         "concept_map": concept_map,
-                        "micro_lessons": micro_lessons
+                        "lesson_plan": lesson_plan
                     }
                 }
             else:
                 # Generate lesson content on-demand if not found in Supabase
                 logger.info(f"Lesson not found in Supabase for lesson {lesson_id}, generating on-demand")
                 lesson_content = await _generate_lesson_on_demand(lesson_id)
-                # Attach micro-lessons using framework from lesson_content
+                # Retrieval-based lesson plan
                 framework_value = (lesson_content or {}).get("framework", "generic")
-                micro_lessons = _get_micro_lessons_for_framework(framework_value)
+                try:
+                    from distiller import generate_retrieval_based_lesson_plan_for_lesson
+                    lesson_plan = await generate_retrieval_based_lesson_plan_for_lesson(lesson_id, ExplanationLevel.INTERN, framework_value)
+                except Exception:
+                    lesson_plan = {"title": "Learning Plan", "learning_topics": [], "learning_path": []}
                 if isinstance(lesson_content, dict):
-                    lesson_content["micro_lessons"] = micro_lessons
+                    lesson_content["lesson_plan"] = lesson_plan
                 try:
                     from distiller import get_lesson_cache, set_lesson_cache
                     cached = get_lesson_cache(str(lesson_id)) or {}
-                    cached["micro_lessons"] = micro_lessons
+                    cached["lesson_plan"] = lesson_plan
                     set_lesson_cache(str(lesson_id), cached)
                 except Exception:
                     pass
@@ -400,7 +409,8 @@ async def get_lesson_content_for_chat(lesson_id: int, user_id: Optional[str] = N
         except Exception:
             lesson_store = {}
 
-        cached = lesson_store.get(str(lesson_id)) if isinstance(lesson_store, dict) else None
+        from distiller import get_lesson_cache
+        cached = get_lesson_cache(str(lesson_id))
 
         # Get lesson data
         lesson_data = get_lesson_by_id(lesson_id) or cached
@@ -460,14 +470,20 @@ async def ingest_distilled_lesson(
     """Ingest a previously processed lesson into the chat conversation context.
     This allows the chatbot to reference existing lessons without re-uploading the PDF."""
     try:
-        # Get lesson data from Supabase
-        lesson_data = get_lesson_by_id(lesson_id)
+        # Get lesson data (prefer cache)
+        try:
+            from distiller import get_lesson_cache
+        except Exception:
+            get_lesson_cache = None
+        cached = get_lesson_cache(str(lesson_id)) if get_lesson_cache else None
+
+        lesson_data = get_lesson_by_id(lesson_id) or cached
         if not lesson_data:
             raise HTTPException(404, "Lesson not found")
         
         # Get lesson summary and full text
-        summary = get_lesson_summary(lesson_id)
-        full_text = get_lesson_full_text(lesson_id)
+        summary = get_lesson_summary(lesson_id) or (cached.get("summary") if cached else None)
+        full_text = get_lesson_full_text(lesson_id) or (cached.get("full_text") if cached else None)
         
         if not summary:
             raise HTTPException(404, "Lesson summary not found")
@@ -496,8 +512,8 @@ async def ingest_distilled_lesson(
         })
         
         # Generate welcome message
-        title = lesson_data.get("title", "your lesson")
-        framework = lesson_data.get("framework", "GENERIC")
+        title = (lesson_data.get("title") if isinstance(lesson_data, dict) else None) or "your lesson"
+        framework = (lesson_data.get("framework") if isinstance(lesson_data, dict) else None) or "GENERIC"
         
         welcome_message = f"""🎉 **Lesson Successfully Loaded!**
 
@@ -855,6 +871,62 @@ async def get_available_frameworks():
     """Get list of available frameworks."""
     frameworks = [{"value": f.value, "label": f.value.replace("_", " ").title()} for f in Framework]
     return {"frameworks": frameworks}
+
+# App startup hook to precompute micro-lesson embeddings
+@app.on_event("startup")
+async def _startup():
+    try:
+        from distiller import precompute_micro_lessons_embeddings
+        total, embedded = await precompute_micro_lessons_embeddings()
+        logger.info(f"Micro-lessons precomputed: {embedded}/{total}")
+    except Exception as e:
+        logger.warning(f"Failed precomputing micro-lessons: {e}")
+
+# -----------------
+# Supabase debug APIs
+# -----------------
+@app.get("/api/debug/supabase/check")
+async def debug_supabase_check():
+    try:
+        from supabase_helper import SUPA
+        if not SUPA:
+            return {"supabase": False, "message": "SUPA client not initialized. Check env vars."}
+        # Try a lightweight query
+        res = SUPA.table("lessons").select("id", count="exact").limit(1).execute()
+        return {"supabase": True, "lessons_count": res.count or 0}
+    except Exception as e:
+        return {"supabase": False, "error": str(e)}
+
+@app.post("/api/debug/supabase/seed")
+async def debug_supabase_seed(user_id: str = Query("anonymous-user")):
+    """Insert a test lesson + one card + concept map to verify Supabase writes."""
+    try:
+        from supabase_helper import insert_lesson, insert_cards, insert_concept_map
+        from schemas import Framework, ExplanationLevel
+
+        title = f"Test Lesson {datetime.utcnow().isoformat()}"
+        summary = "• Test bullet one\n• Test bullet two\n• Test bullet three"
+        lesson_id = insert_lesson(user_id, title, summary, Framework.GENERIC, ExplanationLevel.INTERN, full_text="Test full text")
+
+        # One bullet card
+        cards = [{
+            "lesson_id": lesson_id,
+            "card_type": "bullet",
+            "payload": {"order": 0, "text": "Test bullet one"}
+        }]
+        insert_cards(lesson_id, cards)
+
+        # Simple concept map
+        concept_map = {
+            "nodes": [{"id": "n1", "title": "Test Node"}],
+            "edges": []
+        }
+        insert_concept_map(lesson_id, concept_map)
+
+        return {"ok": True, "lesson_id": lesson_id}
+    except Exception as e:
+        logger.error(f"Supabase seed failed: {e}")
+        raise HTTPException(500, f"Supabase seed failed: {str(e)}")
 
 @app.get("/api/skills")
 async def get_available_skills():

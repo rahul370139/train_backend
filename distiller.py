@@ -383,6 +383,61 @@ async def select_top_micro_lessons_by_text(text: str, top_k: int = 6) -> List[Di
     results = [lessons[i] for i in indices if i < len(lessons)]
     return results
 
+async def generate_retrieval_based_lesson_plan_for_lesson(
+    lesson_id: int,
+    explanation_level: ExplanationLevel = ExplanationLevel.INTERN,
+    framework: str = "generic"
+) -> Dict:
+    """Generate a retrieval-grounded learning plan (topics + path) for the Learn page.
+    Uses cached chunks/embeddings from lesson_store populated at upload time.
+    """
+    cached = get_lesson_cache(str(lesson_id))
+    if not cached:
+        # Fallback minimal structure
+        return {
+            "title": "Learning Plan",
+            "overview": "Learning topics based on the document",
+            "difficulty_level": "intermediate",
+            "learning_topics": [],
+            "learning_path": []
+        }
+    chunks = cached.get("chunks") or []
+    embeds = cached.get("chunk_embeddings") or []
+    summary = cached.get("summary") or ""
+    # Retrieve most representative chunks using the summary as a query
+    retrieval = ""
+    if chunks and embeds and summary:
+        try:
+            q_embed = await generate_content_embedding(summary)
+            sims = find_similar_content(q_embed, embeds, top_k=8)
+            top_indices = [i for i, _ in sims]
+            top_texts = [chunks[i] for i in top_indices if i < len(chunks)]
+            retrieval = "\n\n".join(top_texts)
+        except Exception:
+            retrieval = ""
+    plan_prompt = (
+        f"Create a micro-learning plan that teaches the user the concepts in this document.\n"
+        f"Framework Context: {framework}\n{get_explanation_prompt(explanation_level)}\n"
+        f"Document summary:\n{summary}\n\nRelevant content:\n{retrieval}\n\n"
+        "Return JSON: {\n"
+        "  \"title\": str, \"overview\": str, \"difficulty_level\": \"beginner|intermediate|advanced\",\n"
+        "  \"learning_topics\": [ { \"topic\": str, \"description\": str, \"estimated_time\": str, \"prerequisites\": [str], \"key_concepts\": [str] } ],\n"
+        "  \"learning_path\": [str]\n"
+        "}"
+    )
+    raw = await call_groq([{ "role": "user", "content": plan_prompt }])
+    data = _parse_json_safely(raw)
+    if isinstance(data, dict):
+        return data
+    # Fallback minimal plan
+    return {
+        "title": "Learning Plan",
+        "overview": "Learning topics based on the document",
+        "difficulty_level": "intermediate",
+        "learning_topics": [],
+        "learning_path": []
+    }
+
 async def generate_content_embedding(text: str) -> List[float]:
     """
     Generate a single embedding for a piece of content using Cohere API.
@@ -582,17 +637,16 @@ async def map_reduce_summary(chunks: List[str], explanation_level: ExplanationLe
         # Return a simple summary instead of failing
         return "• " + " • ".join([chunk[:100] + "..." for chunk in chunks[:5]])
 
-async def gen_flashcards_quiz(summary: str, explanation_level: ExplanationLevel = ExplanationLevel.INTERN) -> Dict[str, list]:
+async def gen_flashcards_quiz(summary: str, explanation_level: ExplanationLevel = ExplanationLevel.INTERN, *, retrieval_context: Optional[str] = None) -> Dict[str, list]:
+    """Generate flashcards and quiz using summary and optional retrieved context."""
     explanation_prompt = get_explanation_prompt(explanation_level)
+    context_part = f"\nContext (retrieved from document):\n{retrieval_context}\n" if retrieval_context else "\n"
     prompt = (
-        f"Given the following summary, create {explanation_prompt}:\n"
-        "1. 5 flashcards as JSON list of { \"front\": str, \"back\": str }\n"
-        "2. 5 multiple-choice questions as JSON list of {\n"
-        "   \"question\": str, \"options\": [a,b,c,d], \"answer\": \"a\"\n"
-        "}\n"
-        "Return valid JSON with keys 'flashcards' and 'quiz'.\n"
-        "Summary:\n"
-        f"{summary}"
+        f"Create high-quality learning materials. {explanation_prompt}\n"
+        f"Summary of document:\n{summary}{context_part}"
+        "Return JSON with:\n"
+        "flashcards: 5 items, each { \"front\": str, \"back\": str }\n"
+        "quiz: 5 items, each { \"question\": str, \"options\": [\"A\",\"B\",\"C\",\"D\"], \"answer\": \"A|B|C|D\" }\n"
     )
     try:
         messages = [{"role": "user", "content": prompt}]
@@ -601,7 +655,6 @@ async def gen_flashcards_quiz(summary: str, explanation_level: ExplanationLevel 
         if isinstance(data, dict) and ("flashcards" in data and "quiz" in data):
             return data
         return _get_fallback_flashcards_quiz(summary)
-            
     except Exception as e:
         logger.error(f"LLM flashcards/quiz failed: {e}")
         return _get_fallback_flashcards_quiz(summary)
@@ -822,57 +875,28 @@ async def _handle_lesson_generation(message: str, conv_id: str, file_context: Op
         current_pdf = metadata.get("current_pdf", {})
         framework = current_pdf.get("framework", "GENERIC")
         
-        prompt = f"""
-        Create LEARNING TOPICS that a user needs to understand to master the content from: {topic}
-        
-        {f"Use this context if relevant: {file_context}" if file_context else ""}
-        
-        Framework Context: {framework}
-        Explanation Level: {explanation_level.value}
-        
-        {get_explanation_prompt(explanation_level)}
-        
-        IMPORTANT: Create a list of LEARNING TOPICS (not a summary) that someone would need to study to understand this content.
-        Think of this as a curriculum or learning path. Each topic should be a specific subject area that needs to be learned.
-        
-        For example, if the content is about "API Development", the learning topics might be:
-        - REST API Principles
-        - HTTP Methods and Status Codes  
-        - Authentication and Authorization
-        - API Design Patterns
-        - Testing APIs
-        - Documentation Best Practices
-        
-        Return the lesson as JSON with this structure:
-        {{
-            "title": "Learning Topics: [Main Subject]",
-            "overview": "What you need to learn to understand this content",
-            "estimated_duration": "Total learning time",
-            "difficulty_level": "beginner|intermediate|advanced",
-            "learning_topics": [
-                {{
-                    "topic": "Topic Name",
-                    "description": "What this topic covers",
-                    "importance": "Why this topic is important",
-                    "estimated_time": "How long to learn this topic",
-                    "prerequisites": ["What you need to know first"],
-                    "key_concepts": ["Main concepts to understand"],
-                    "learning_resources": ["Where to learn this topic"],
-                    "practical_applications": ["How this applies to the main content"]
-                }}
-            ],
-            "learning_path": [
-                "Topic 1 should be learned first",
-                "Topic 2 should be learned second",
-                "Topic 3 should be learned third"
-            ],
-            "framework_specific": {framework != "GENERIC"}
-        }}
-        """
-        
-        messages = [{"role": "user", "content": prompt}]
-        response = await call_groq(messages)
-        lesson_data = json.loads(response)
+        # Retrieval-augmented learning plan: use top chunks
+        chunks = conversation_store.get(conv_id, {}).get("chunks", [])
+        embeds = conversation_store.get(conv_id, {}).get("chunk_embeddings", [])
+        retrieval = ""
+        if chunks and embeds:
+            q_embed = await generate_content_embedding(topic)
+            sims = find_similar_content(q_embed, embeds, top_k=6)
+            top_indices = [i for i, _ in sims]
+            top_texts = [chunks[i] for i in top_indices if i < len(chunks)]
+            retrieval = "\n\n".join(top_texts)
+        plan_prompt = (
+            f"Based on the following content, create a micro-learning plan to understand: {topic}\n"
+            f"Framework Context: {framework}\n{get_explanation_prompt(explanation_level)}\n"
+            f"Retrieved content:\n{retrieval}\n"
+            "Return JSON: {\n"
+            "  \"title\": str, \"overview\": str, \"difficulty_level\": \"beginner|intermediate|advanced\",\n"
+            "  \"learning_topics\": [ { \"topic\": str, \"description\": str, \"estimated_time\": str, \"prerequisites\": [str], \"key_concepts\": [str] } ],\n"
+            "  \"learning_path\": [str]\n"
+            "}"
+        )
+        lesson_raw = await call_groq([{ "role": "user", "content": plan_prompt }])
+        lesson_data = _parse_json_safely(lesson_raw) or {"title": f"Learning Topics: {topic}", "learning_topics": [], "learning_path": []}
         
         # Create engaging response
         response_text = f"""📚 **Learning Topics Identified Successfully!**
@@ -909,34 +933,23 @@ async def _handle_quiz_generation(message: str, conv_id: str, file_context: Opti
     try:
         topic = _extract_topic_from_message(message, ["quiz about", "create quiz", "generate quiz", "make quiz"])
         
-        prompt = f"""
-        Create a quiz about: {topic}
-        
-        {f"Use this context if relevant: {file_context}" if file_context else ""}
-        
-        {get_explanation_prompt(explanation_level)}
-        
-        Return the quiz as JSON with this structure:
-        {{
-            "title": "Quiz Title",
-            "description": "Quiz description",
-            "questions": [
-                {{
-                    "question": "Question text",
-                    "options": ["A", "B", "C", "D"],
-                    "correct_answer": "A",
-                    "explanation": "Why this is correct"
-                }}
-            ],
-            "total_questions": 5,
-            "estimated_time": "10-15 minutes"
-        }}
-        """
-        
-        messages = [{"role": "user", "content": prompt}]
-        response = await call_groq(messages)
-        quiz_data = json.loads(response)
-        response = f"I've created a quiz about {topic} for you! Here's what I've prepared:\n\n**{quiz_data['title']}**\n{quiz_data['description']}"
+        # Retrieval-augmented quiz: pick top chunks
+        chunks = conversation_store.get(conv_id, {}).get("chunks", [])
+        embeds = conversation_store.get(conv_id, {}).get("chunk_embeddings", [])
+        retrieval = ""
+        if chunks and embeds:
+            # Build a quick query embedding from topic
+            q_embed = await generate_content_embedding(topic)
+            sims = find_similar_content(q_embed, embeds, top_k=4)
+            top_indices = [i for i, _ in sims]
+            top_texts = [chunks[i] for i in top_indices if i < len(chunks)]
+            retrieval = "\n\n".join(top_texts)
+        qa = await gen_flashcards_quiz(
+            summary=f"Topic: {topic}\n{file_context or ''}",
+            explanation_level=explanation_level,
+            retrieval_context=retrieval
+        )
+        response = f"I've created a quiz about {topic} for you!"
         
         add_message_to_conversation(conv_id, "assistant", response)
         
@@ -945,7 +958,7 @@ async def _handle_quiz_generation(message: str, conv_id: str, file_context: Opti
             "conversation_id": conv_id,
             "message_id": str(uuid.uuid4()),
             "timestamp": datetime.utcnow().isoformat(),
-            "quiz_data": quiz_data,
+            "quiz_data": qa,
             "type": "quiz"
         }
         
@@ -958,33 +971,22 @@ async def _handle_flashcard_generation(message: str, conv_id: str, file_context:
     try:
         topic = _extract_topic_from_message(message, ["flashcards about", "create flashcards", "generate flashcards", "make flashcards"])
         
-        prompt = f"""
-        Create flashcards about: {topic}
-        
-        {f"Use this context if relevant: {file_context}" if file_context else ""}
-        
-        {get_explanation_prompt(explanation_level)}
-        
-        Return the flashcards as JSON with this structure:
-        {{
-            "title": "Flashcard Set Title",
-            "description": "Description of the flashcard set",
-            "cards": [
-                {{
-                    "front": "Question or term",
-                    "back": "Answer or definition",
-                    "category": "Category (optional)"
-                }}
-            ],
-            "total_cards": 10,
-            "estimated_study_time": "15-20 minutes"
-        }}
-        """
-        
-        messages = [{"role": "user", "content": prompt}]
-        response = await call_groq(messages)
-        flashcard_data = json.loads(response)
-        response = f"I've created flashcards about {topic} for you! Here's what I've prepared:\n\n**{flashcard_data['title']}**\n{flashcard_data['description']}"
+        # Retrieval-augmented flashcards
+        chunks = conversation_store.get(conv_id, {}).get("chunks", [])
+        embeds = conversation_store.get(conv_id, {}).get("chunk_embeddings", [])
+        retrieval = ""
+        if chunks and embeds:
+            q_embed = await generate_content_embedding(topic)
+            sims = find_similar_content(q_embed, embeds, top_k=4)
+            top_indices = [i for i, _ in sims]
+            top_texts = [chunks[i] for i in top_indices if i < len(chunks)]
+            retrieval = "\n\n".join(top_texts)
+        qa = await gen_flashcards_quiz(
+            summary=f"Topic: {topic}\n{file_context or ''}",
+            explanation_level=explanation_level,
+            retrieval_context=retrieval
+        )
+        response = f"I've created flashcards about {topic} for you!"
         
         add_message_to_conversation(conv_id, "assistant", response)
         
@@ -993,7 +995,7 @@ async def _handle_flashcard_generation(message: str, conv_id: str, file_context:
             "conversation_id": conv_id,
             "message_id": str(uuid.uuid4()),
             "timestamp": datetime.utcnow().isoformat(),
-            "flashcard_data": flashcard_data,
+            "flashcard_data": {"cards": qa.get("flashcards", [])},
             "type": "flashcards"
         }
         
@@ -1094,23 +1096,29 @@ If a file has been uploaded, you can reference its content to provide more speci
 
 You can also generate lessons, quizzes, and flashcards when asked."""
     
-    # Build messages for LLM
+    # Retrieval-augmented chat
     llm_messages = [{"role": "system", "content": system_prompt}]
-    
-    # Add file context if available
-    if file_context:
-        llm_messages.append({
-            "role": "system", 
-            "content": f"File context: {file_context}\n\nUse this information to provide more specific and relevant answers."
-        })
-    
-    # Add conversation history (last 10 messages to avoid token limits)
+    retrieval = ""
+    chunks = conversation_store.get(conv_id, {}).get("chunks", [])
+    embeds = conversation_store.get(conv_id, {}).get("chunk_embeddings", [])
+    if chunks and embeds:
+        try:
+            q_embed = await generate_content_embedding(message)
+            sims = find_similar_content(q_embed, embeds, top_k=6)
+            top_indices = [i for i, _ in sims]
+            top_texts = [chunks[i] for i in top_indices if i < len(chunks)]
+            retrieval = "\n\n".join(top_texts)
+        except Exception:
+            retrieval = ""
+    if retrieval:
+        llm_messages.append({"role": "system", "content": f"Relevant document context:\n{retrieval}"})
+    # Add conversation history
     conversation = conversation_store[conv_id]
     messages = conversation["messages"]
     for msg in messages[-10:]:
         llm_messages.append({"role": msg["role"], "content": msg["content"]})
-    
-    # Generate response
+    # User message last
+    llm_messages.append({"role": "user", "content": message})
     response = await call_groq(llm_messages)
     add_message_to_conversation(conv_id, "assistant", response)
     
@@ -1412,8 +1420,10 @@ async def process_file_for_chat(file_path: Path, user_id: str, conversation_id: 
         pdf_name = file_path.name
         store_recent_pdf(user_id, pdf_name, primary_framework, summary)
         
-        # Add file context to conversation (use full text for better chatbot access)
+        # Add file context and retrieval data to conversation
         conversation_store[conv_id]["file_context"] = text
+        conversation_store[conv_id]["chunks"] = chunks
+        conversation_store[conv_id]["chunk_embeddings"] = embeds
         conversation_store[conv_id]["updated_at"] = datetime.utcnow().isoformat()
         
         # Update conversation metadata
@@ -1495,7 +1505,9 @@ async def process_file_for_chat(file_path: Path, user_id: str, conversation_id: 
             "bullets": [b.strip() for b in summary.split("•") if b.strip()],
             "flashcards": qa.get("flashcards", []),
             "quiz": qa.get("quiz", []),
-            "concept_map": concept_map
+            "concept_map": concept_map,
+            "chunks": chunks,
+            "chunk_embeddings": embeds
         })
         
         # Store lesson_id in conversation metadata for future reference

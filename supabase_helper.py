@@ -3,9 +3,21 @@ from loguru import logger
 from datetime import datetime
 from typing import List, Dict, Optional
 from schemas import Framework, ExplanationLevel
+from uuid import UUID, uuid5, NAMESPACE_DNS
 
 # Initialize Supabase client only if environment variables are available
 SUPA = None
+DUMMY_ID_COUNTER = 100000  # Unique ID generator when Supabase is unavailable
+def _normalize_uuid(user_id: str) -> str:
+    """Ensure a valid UUID string. If not valid, derive a deterministic UUID from the input."""
+    try:
+        # Accept both UUID object and string
+        u = UUID(str(user_id))
+        return str(u)
+    except Exception:
+        # Deterministic UUID to keep rows stable for the same pseudo id
+        return str(uuid5(NAMESPACE_DNS, f"trainpi:{user_id}"))
+
 try:
     supabase_url = os.getenv("NEXT_PUBLIC_SUPABASE_URL")
     supabase_key = os.getenv("NEXT_PUBLIC_SUPABASE_ANON_KEY")
@@ -17,21 +29,26 @@ except Exception as e:
     logger.warning(f"Failed to initialize Supabase client: {e}. Running in test mode.")
 
 def insert_lesson(owner_id: str, title: str, summary: str, framework: Framework = Framework.GENERIC, explanation_level: ExplanationLevel = ExplanationLevel.INTERN, full_text: str = None) -> int:
+    global DUMMY_ID_COUNTER
     if not SUPA:
-        logger.warning("Supabase not available. Returning dummy lesson_id.")
-        return 123  # Dummy ID for testing
+        # Generate unique increasing ID for local/testing mode
+        DUMMY_ID_COUNTER += 1
+        lesson_id = DUMMY_ID_COUNTER
+        logger.warning(f"Supabase not available. Using local lesson_id {lesson_id}.")
+        return lesson_id
     
     try:
         # Clean and validate data before inserting
         clean_title = title[:255] if title else "Untitled Lesson"  # Limit title length
         clean_summary = summary[:5000] if summary else "No summary available"  # Limit summary length
         
-        # Ensure owner_id is a valid string
+        # Ensure owner is a valid UUID string (table requires uuid)
         if not owner_id or not isinstance(owner_id, str):
-            owner_id = "test-user"  # Fallback for invalid owner_id
+            owner_id = "anonymous-user"
+        owner_uuid = _normalize_uuid(owner_id)
         
         insert_data = {
-            "owner": owner_id, 
+            "owner": owner_uuid, 
             "title": clean_title, 
             "summary": clean_summary,
             "framework": framework.value if hasattr(framework, 'value') else str(framework),
@@ -57,13 +74,16 @@ def insert_lesson(owner_id: str, title: str, summary: str, framework: Framework 
             return lesson_id
         else:
             logger.error("Supabase returned empty data for lesson insert")
-            return 123  # Fallback ID
+            # Fallback ID in production mode failure
+            DUMMY_ID_COUNTER += 1
+            return DUMMY_ID_COUNTER
             
     except Exception as e:
         logger.error(f"Supabase insert_lesson failed: {e}")
-        # Return fallback ID instead of raising exception
-        logger.warning("Using fallback lesson_id due to Supabase failure")
-        return 123  # Fallback ID for testing
+        # Return unique fallback ID instead of raising exception
+        logger.warning("Using unique fallback lesson_id due to Supabase failure")
+        DUMMY_ID_COUNTER += 1
+        return DUMMY_ID_COUNTER
 
 def insert_cards(lesson_id: int, cards: list[dict]):
     if not SUPA:
@@ -163,9 +183,10 @@ def upsert_user_role(user_id: str, role: str, experience_level: str, interests: 
         logger.warning("Supabase not available. Skipping user role update.")
         return True  # Return success for testing
     try:
-        # For testing, accept any user_id format
+        # Normalize to uuid
+        user_uuid = _normalize_uuid(user_id)
         SUPA.table("user_roles").upsert({
-            "user_id": user_id,
+            "user_id": user_uuid,
             "role": role,
             "experience_level": experience_level,
             "interests": interests,
