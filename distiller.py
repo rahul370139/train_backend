@@ -955,18 +955,7 @@ async def _handle_lesson_generation(message: str, conv_id: str, file_context: Op
         lesson_data = _parse_json_safely(lesson_raw) or {"title": f"Learning Topics: {topic}", "learning_topics": [], "learning_path": []}
         
         # Create engaging response
-        response_text = f"""📚 **Learning Topics Identified Successfully!**
-
-**{lesson_data['title']}**
-{lesson_data['overview']}
-
-🎯 **Topics you need to learn:**
-{chr(10).join(f"• {topic['topic']} - {topic['description']}" for topic in lesson_data.get('learning_topics', []))}
-
-⏱️ **Total Learning Time:** {lesson_data.get('estimated_duration', '2-3 hours')}
-🎯 **Level:** {lesson_data.get('difficulty_level', 'intermediate')}
-
-These are the specific topics you should study to fully understand this content. Each topic builds your knowledge systematically!"""
+        response_text = f"I've generated lesson topics for {topic}."
         
         add_message_to_conversation(conv_id, "assistant", response_text)
         
@@ -1020,6 +1009,7 @@ async def _handle_quiz_generation(message: str, conv_id: str, file_context: Opti
             "message_id": str(uuid.uuid4()),
             "timestamp": datetime.utcnow().isoformat(),
             "quiz_data": normalized_quiz,
+            "quiz": normalized_quiz.get("questions", []),
             "type": "quiz"
         }
         
@@ -1062,6 +1052,7 @@ async def _handle_flashcard_generation(message: str, conv_id: str, file_context:
             "message_id": str(uuid.uuid4()),
             "timestamp": datetime.utcnow().isoformat(),
             "flashcard_data": normalized_cards,
+            "flashcards": normalized_cards.get("cards", []),
             "type": "flashcards"
         }
         

@@ -87,6 +87,9 @@ class ChatResponse(BaseModel):
     lesson_data: Optional[Dict[str, Any]] = Field(default=None, description="Lesson/microlearning payload")
     summary_data: Optional[Dict[str, Any]] = Field(default=None, description="Summary payload")
     workflow_data: Optional[Dict[str, Any]] = Field(default=None, description="Workflow payload")
+    # Compatibility fields for frontends expecting flat arrays
+    quiz: Optional[List[Dict[str, Any]]] = Field(default=None, description="Quiz questions array for direct rendering")
+    flashcards: Optional[List[Dict[str, Any]]] = Field(default=None, description="Flashcards array for direct rendering")
 
 class ChatWithFileRequest(BaseModel):
     user_id: str
