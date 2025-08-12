@@ -131,6 +131,8 @@ def _parse_json_safely(raw: str) -> Optional[Dict]:
     except Exception:
         return None
 
+_LLM_SEMAPHORE = asyncio.Semaphore(2)
+
 async def call_groq(messages: List[Dict]) -> str:
     """Call Groq API with optimized model"""
     url = "https://api.groq.com/openai/v1/chat/completions"
@@ -145,27 +147,59 @@ async def call_groq(messages: List[Dict]) -> str:
         "stream": False
     }
 
-    try:
-        async with httpx.AsyncClient(timeout=30.0) as client:
-            res = await client.post(url, headers=headers, json=payload)
-            res.raise_for_status()
-            response_data = res.json()
-            
-            if "choices" in response_data and len(response_data["choices"]) > 0:
-                return response_data["choices"][0]["message"]["content"]
-            else:
-                logger.error(f"Unexpected Groq response format: {response_data}")
+    # Retry with basic backoff on rate limits
+    max_retries = 3
+    backoff = 1.5
+    attempt = 0
+    async with _LLM_SEMAPHORE:
+        while True:
+            try:
+                async with httpx.AsyncClient(timeout=30.0) as client:
+                    res = await client.post(url, headers=headers, json=payload)
+                    res.raise_for_status()
+                    response_data = res.json()
+                    if "choices" in response_data and len(response_data["choices"]) > 0:
+                        return response_data["choices"][0]["message"]["content"]
+                    logger.error(f"Unexpected Groq response format: {response_data}")
+                    return ""
+            except httpx.HTTPStatusError as e:
+                status = e.response.status_code
+                text = e.response.text
+                logger.error(f"Groq API HTTP error: {status} - {text}")
+                # Handle 429 rate limit with backoff
+                if status == 429 and attempt < max_retries:
+                    wait_s = backoff
+                    try:
+                        data = e.response.json()
+                        msg = data.get("error", {}).get("message", "")
+                        # Extract 'try again in Xs' if present
+                        import re
+                        m = re.search(r"try again in ([0-9.]+)s", msg)
+                        if m:
+                            wait_s = min(float(m.group(1)) + 0.5, 15.0)
+                    except Exception:
+                        pass
+                    await asyncio.sleep(wait_s)
+                    attempt += 1
+                    backoff *= 2
+                    continue
                 return ""
-                
-    except httpx.TimeoutException:
-        logger.error("Groq API request timed out")
-        return ""
-    except httpx.HTTPStatusError as e:
-        logger.error(f"Groq API HTTP error: {e.response.status_code} - {e.response.text}")
-        return ""
-    except Exception as e:
-        logger.error(f"Groq API call failed: {e}")
-        return ""
+            except httpx.TimeoutException:
+                logger.error("Groq API request timed out")
+                if attempt < max_retries:
+                    await asyncio.sleep(backoff)
+                    attempt += 1
+                    backoff *= 2
+                    continue
+                return ""
+            except Exception as e:
+                logger.error(f"Groq API call failed: {e}")
+                if attempt < max_retries:
+                    await asyncio.sleep(backoff)
+                    attempt += 1
+                    backoff *= 2
+                    continue
+                return ""
 
 def pdf_to_text(path: Path) -> str:
     try:
@@ -648,8 +682,12 @@ async def gen_flashcards_quiz(summary: str, explanation_level: ExplanationLevel 
         "flashcards: 5 items, each { \"front\": str, \"back\": str }\n"
         "quiz: 5 items, each { \"question\": str, \"options\": [\"A\",\"B\",\"C\",\"D\"], \"answer\": \"A|B|C|D\" }\n"
     )
+    # Lighten prompt on rate-limit retries by truncating context
     try:
-        messages = [{"role": "user", "content": prompt}]
+        ctx = retrieval_context or ""
+        if len(ctx) > 4000:
+            ctx = ctx[:4000]
+        messages = [{"role": "user", "content": prompt.replace(retrieval_context or "", ctx)}]
         response = await call_groq(messages)
         data = _parse_json_safely(response)
         if isinstance(data, dict) and ("flashcards" in data and "quiz" in data):
