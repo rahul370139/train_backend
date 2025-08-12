@@ -977,6 +977,8 @@ async def _handle_quiz_generation(message: str, conv_id: str, file_context: Opti
     """Handle quiz generation command."""
     try:
         topic = _extract_topic_from_message(message, ["quiz about", "create quiz", "generate quiz", "make quiz"])
+        if not topic or not topic.strip():
+            topic = "your document"
         
         # Retrieval-augmented quiz: pick top chunks
         chunks = conversation_store.get(conv_id, {}).get("chunks", [])
@@ -1003,8 +1005,18 @@ async def _handle_quiz_generation(message: str, conv_id: str, file_context: Opti
         
         # Normalize shape to match /api/lesson/{id}/quiz -> { content: { questions: [...] } }
         normalized_quiz = {"questions": qa.get("quiz", qa.get("questions", []))}
+        # Build a textual preview to ensure FE shows content immediately
+        preview_lines = []
+        for i, q in enumerate(normalized_quiz.get("questions", [])[:min(len(normalized_quiz.get("questions", [])), 10)], start=1):
+            try:
+                opts = q.get("options") or []
+                opts_txt = f" A) {opts[0]}  B) {opts[1]}  C) {opts[2]}  D) {opts[3]}" if len(opts) >= 4 else ""
+                preview_lines.append(f"{i}. {q.get('question','')}\n{opts_txt}")
+            except Exception:
+                preview_lines.append(f"{i}. {q}")
+        response_with_preview = response + ("\n\n" + "\n".join(preview_lines) if preview_lines else "")
         return {
-            "response": response,
+            "response": response_with_preview,
             "conversation_id": conv_id,
             "message_id": str(uuid.uuid4()),
             "timestamp": datetime.utcnow().isoformat(),
@@ -1021,6 +1033,8 @@ async def _handle_flashcard_generation(message: str, conv_id: str, file_context:
     """Handle flashcard generation command."""
     try:
         topic = _extract_topic_from_message(message, ["flashcards about", "create flashcards", "generate flashcards", "make flashcards"])
+        if not topic or not topic.strip():
+            topic = "your document"
         
         # Retrieval-augmented flashcards
         chunks = conversation_store.get(conv_id, {}).get("chunks", [])
@@ -1046,8 +1060,16 @@ async def _handle_flashcard_generation(message: str, conv_id: str, file_context:
         
         # Normalize shape to match /api/lesson/{id}/flashcards -> { content: { cards: [...] } }
         normalized_cards = {"cards": qa.get("flashcards", qa.get("cards", []))}
+        # Build textual preview to ensure FE shows content immediately
+        preview_lines = []
+        for i, c in enumerate(normalized_cards.get("cards", [])[:min(len(normalized_cards.get("cards", [])), 12)], start=1):
+            try:
+                preview_lines.append(f"Card {i}:\nFront: {c.get('front','')}\nBack: {c.get('back','')}")
+            except Exception:
+                preview_lines.append(f"Card {i}: {c}")
+        response_with_preview = response + ("\n\n" + "\n\n".join(preview_lines) if preview_lines else "")
         return {
-            "response": response,
+            "response": response_with_preview,
             "conversation_id": conv_id,
             "message_id": str(uuid.uuid4()),
             "timestamp": datetime.utcnow().isoformat(),
@@ -1313,6 +1335,8 @@ async def _handle_summary_generation(message: str, conv_id: str, file_context: O
     """Handle summary/bullet points generation command."""
     try:
         topic = _extract_topic_from_message(message, ["summary about", "create summary", "generate summary", "make summary", "summarize", "bullet points"])
+        if not topic or not topic.strip():
+            topic = "your document"
         
         if file_context:
             # Use existing file context for summary
