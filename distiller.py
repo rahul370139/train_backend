@@ -671,16 +671,24 @@ async def map_reduce_summary(chunks: List[str], explanation_level: ExplanationLe
         # Return a simple summary instead of failing
         return "• " + " • ".join([chunk[:100] + "..." for chunk in chunks[:5]])
 
-async def gen_flashcards_quiz(summary: str, explanation_level: ExplanationLevel = ExplanationLevel.INTERN, *, retrieval_context: Optional[str] = None) -> Dict[str, list]:
-    """Generate flashcards and quiz using summary and optional retrieved context."""
+async def gen_flashcards_quiz(summary: str, explanation_level: ExplanationLevel = ExplanationLevel.INTERN, *, retrieval_context: Optional[str] = None, num_items: int = 5) -> Dict[str, list]:
+    """Generate flashcards and quiz using summary and optional retrieved context.
+    num_items controls how many flashcards and quiz questions to generate.
+    """
     explanation_prompt = get_explanation_prompt(explanation_level)
     context_part = f"\nContext (retrieved from document):\n{retrieval_context}\n" if retrieval_context else "\n"
+    # Clamp num_items
+    try:
+        n_items = max(1, min(int(num_items), 20))
+    except Exception:
+        n_items = 5
+
     prompt = (
         f"Create high-quality learning materials. {explanation_prompt}\n"
         f"Summary of document:\n{summary}{context_part}"
         "Return JSON with:\n"
-        "flashcards: 5 items, each { \"front\": str, \"back\": str }\n"
-        "quiz: 5 items, each { \"question\": str, \"options\": [\"A\",\"B\",\"C\",\"D\"], \"answer\": \"A|B|C|D\" }\n"
+        f"flashcards: {n_items} items, each {{ \"front\": str, \"back\": str }}\n"
+        f"quiz: {n_items} items, each {{ \"question\": str, \"options\": [\"A\",\"B\",\"C\",\"D\"], \"answer\": \"A|B|C|D\" }}\n"
     )
     # Lighten prompt on rate-limit retries by truncating context
     try:
@@ -692,16 +700,16 @@ async def gen_flashcards_quiz(summary: str, explanation_level: ExplanationLevel 
         data = _parse_json_safely(response)
         if isinstance(data, dict) and ("flashcards" in data and "quiz" in data):
             return data
-        return _get_fallback_flashcards_quiz(summary)
+        return _get_fallback_flashcards_quiz(summary, n_items)
     except Exception as e:
         logger.error(f"LLM flashcards/quiz failed: {e}")
-        return _get_fallback_flashcards_quiz(summary)
+        return _get_fallback_flashcards_quiz(summary, n_items)
 
-def _get_fallback_flashcards_quiz(summary: str) -> Dict[str, list]:
+def _get_fallback_flashcards_quiz(summary: str, num_items: int = 5) -> Dict[str, list]:
     """Generate fallback flashcards and quiz when LLM fails"""
     # Extract key concepts from summary
     words = summary.split()
-    key_concepts = [word for word in words if len(word) > 5][:5]
+    key_concepts = [word for word in words if len(word) > 5][:max(1, num_items)]
     
     flashcards = []
     for i, concept in enumerate(key_concepts):
@@ -982,10 +990,13 @@ async def _handle_quiz_generation(message: str, conv_id: str, file_context: Opti
             top_indices = [i for i, _ in sims]
             top_texts = [chunks[i] for i in top_indices if i < len(chunks)]
             retrieval = "\n\n".join(top_texts)
+        # Support variable count requests, default 5
+        desired_count = _extract_desired_count(message) or 5
         qa = await gen_flashcards_quiz(
             summary=f"Topic: {topic}\n{file_context or ''}",
             explanation_level=explanation_level,
-            retrieval_context=retrieval
+            retrieval_context=retrieval,
+            num_items=desired_count
         )
         response = f"I've created a quiz about {topic} for you!"
         
@@ -1021,10 +1032,13 @@ async def _handle_flashcard_generation(message: str, conv_id: str, file_context:
             top_indices = [i for i, _ in sims]
             top_texts = [chunks[i] for i in top_indices if i < len(chunks)]
             retrieval = "\n\n".join(top_texts)
+        # Support variable count requests, default 5
+        desired_count = _extract_desired_count(message) or 5
         qa = await gen_flashcards_quiz(
             summary=f"Topic: {topic}\n{file_context or ''}",
             explanation_level=explanation_level,
-            retrieval_context=retrieval
+            retrieval_context=retrieval,
+            num_items=desired_count
         )
         response = f"I've created flashcards about {topic} for you!"
         
@@ -1354,7 +1368,9 @@ async def _handle_summary_generation(message: str, conv_id: str, file_context: O
         
         messages = [{"role": "user", "content": prompt}]
         response = await call_groq(messages)
-        summary_data = json.loads(response)
+        # Be more tolerant to non-JSON responses
+        parsed = _parse_json_safely(response)
+        summary_data = parsed if isinstance(parsed, dict) else {"title": f"Summary: {topic}", "overview": "", "key_points": []}
         response_text = f"I've created a summary for {topic}! Here's what I've prepared:\n\n**{summary_data['title']}**\n{summary_data['overview']}"
         
         add_message_to_conversation(conv_id, "assistant", response_text)
@@ -1437,6 +1453,17 @@ def _extract_topic_from_message(message: str, commands: List[str]) -> str:
     
     # Fallback: return the message itself
     return message.strip()
+
+def _extract_desired_count(message: str) -> Optional[int]:
+    """Extract a desired number of items from user text, e.g., 'make 10 flashcards' -> 10."""
+    try:
+        import re
+        m = re.search(r"(\d{1,2})\s*(flashcard|quiz|question|cards|problems)?", message.lower())
+        if m:
+            return int(m.group(1))
+        return None
+    except Exception:
+        return None
 
 async def process_file_for_chat(file_path: Path, user_id: str, conversation_id: Optional[str], explanation_level: ExplanationLevel) -> Dict:
     """Enhanced PDF processing with dynamic action buttons and framework detection.
@@ -1572,57 +1599,31 @@ Provide a helpful, encouraging response about what you found in the file and sug
         ]
         response = await call_groq(messages)
         
-        # Create dynamic action buttons based on content
-        action_buttons = [
-            {"id": "summary", "label": "📋 Generate Summary", "description": "Get key bullet points"},
-            {"id": "lesson", "label": "📚 Create Lesson", "description": "Generate comprehensive microlearning lesson"},
-            {"id": "quiz", "label": "🧠 Generate Quiz", "description": "Create interactive quiz"},
-            {"id": "flashcards", "label": "🗂️ Make Flashcards", "description": "Create study flashcards"},
-            {"id": "workflow", "label": "🔄 Create Workflow", "description": "Generate visual workflow/diagram"}
-        ]
-        
-        # Add framework-specific actions if detected
-        if primary_framework != "GENERIC":
-            action_buttons.append({
-                "id": "framework_specific", 
-                "label": f"🎯 {primary_framework} Focus", 
-                "description": f"Create {primary_framework}-specific content"
-            })
-        
-        # Create interactive response
-        interactive_response = f"""{response}
+        # Create natural language response only (no action buttons)
+        assistant_msg = f"""{response}
 
-🎯 **Interactive Learning Options Available:**
+I can create learning materials from your document when you ask, for example:
+- "Create summary"
+- "Create lesson"
+- "Generate quiz" (you can say how many, e.g., "Generate 10 quiz questions")
+- "Make flashcards" (e.g., "Make 15 flashcards")
+- "Create workflow"
 
-I can create these learning materials from your document:
-• 📋 **"Create summary"** - Get key bullet points
-• 📚 **"Create lesson"** - Generate comprehensive microlearning lesson
-• 🧠 **"Generate quiz"** - Create interactive quiz
-• 🗂️ **"Make flashcards"** - Create study flashcards
-• 🔄 **"Create workflow"** - Generate visual workflow/diagram
+Tell me what you'd like to create next!"""
 
-🎓 **Explanation Levels:**
-• **"Explain like 5"** - Simple explanations
-• **"Explain like 15"** - Intermediate level
-• **"Explain like senior"** - Advanced explanations
+        add_message_to_conversation(conv_id, "assistant", assistant_msg)
 
-Just tell me what you'd like to create!"""
-        
-        add_message_to_conversation(conv_id, "assistant", interactive_response)
-        
         return {
-            "response": interactive_response,
+            "response": assistant_msg,
             "conversation_id": conv_id,
             "message_id": str(uuid.uuid4()),
             "timestamp": datetime.utcnow().isoformat(),
             "file_processed": True,
             "summary": summary,
             "framework_detection": framework_detection,
-            "action_buttons": action_buttons,
-            "interactive_options": True,
+            "interactive_options": False,
             "pdf_name": pdf_name,
-            "lesson_id": lesson_id,  # NEW: Return lesson_id for dashboard integration
-            "actions": ["summary", "lesson", "quiz", "flashcards", "workflow"]  # NEW: Available actions for dashboard
+            "lesson_id": lesson_id
         }
         
     except Exception as e:
