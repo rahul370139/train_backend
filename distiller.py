@@ -18,6 +18,8 @@ OVERLAP = 50
 
 # In-memory conversation storage (replace with database in production)
 conversation_store: Dict[str, Dict] = {}
+# Track the most recent conversation per user to avoid losing context when FE forgets to pass conversation_id
+last_conversation_by_user: Dict[str, str] = {}
 
 # In-memory lesson cache with TTL and capacity (LRU)
 # Structure: { lesson_id: { 'summary': str, 'bullets': List[str], 'flashcards': List[Dict], 'quiz': List[Dict], 'concept_map': Dict, 'full_text': str, 'title': str, 'framework': str, 'cached_at': iso } }
@@ -798,7 +800,12 @@ def _get_fallback_concept_map(summary: str) -> Dict:
 def get_or_create_conversation(conversation_id: Optional[str], user_id: str) -> str:
     """Get existing conversation or create new one with enhanced metadata."""
     if conversation_id and conversation_id in conversation_store:
+        last_conversation_by_user[user_id] = conversation_id
         return conversation_id
+    # If FE didn't pass conversation_id, try to reuse the last conversation for this user
+    existing = last_conversation_by_user.get(user_id)
+    if existing and existing in conversation_store:
+        return existing
     
     new_conversation_id = str(uuid.uuid4())
     conversation_store[new_conversation_id] = {
@@ -815,6 +822,7 @@ def get_or_create_conversation(conversation_id: Optional[str], user_id: str) -> 
             "interaction_history": []
         }
     }
+    last_conversation_by_user[user_id] = new_conversation_id
     return new_conversation_id
 
 def update_user_preferences(user_id: str, preferences: Dict):
@@ -864,6 +872,12 @@ def add_message_to_conversation(conversation_id: str, role: str, content: str):
     }
     conversation_store[conversation_id]["messages"].append(message)
     conversation_store[conversation_id]["updated_at"] = datetime.utcnow().isoformat()
+    # Update last mapping for this user as well
+    try:
+        uid = conversation_store[conversation_id]["user_id"]
+        last_conversation_by_user[uid] = conversation_id
+    except Exception:
+        pass
 
 async def process_chat_message(user_id: str, message: str, conversation_id: Optional[str], explanation_level: ExplanationLevel) -> Dict:
     """Process a chat message and generate a response with enhanced learning content options."""
