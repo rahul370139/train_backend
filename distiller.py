@@ -145,18 +145,18 @@ async def call_groq(messages: List[Dict]) -> str:
     payload = {
         "model": "llama3-8b-8192",  # Lightweight model for best performance
         "messages": messages,
-        "temperature": 0.7,
+        "temperature": 0.3,  # Stricter JSON adherence
         "stream": False
     }
 
-    # Retry with basic backoff on rate limits (kept minimal for responsiveness)
-    max_retries = 1
+    # Retry with basic backoff on rate limits (slightly higher for first-run reliability)
+    max_retries = 2
     backoff = 1.5
     attempt = 0
     async with _LLM_SEMAPHORE:
         while True:
             try:
-                async with httpx.AsyncClient(timeout=12.0) as client:
+                async with httpx.AsyncClient(timeout=25.0) as client:
                     res = await client.post(url, headers=headers, json=payload)
                     res.raise_for_status()
                     response_data = res.json()
@@ -688,9 +688,11 @@ async def gen_flashcards_quiz(summary: str, explanation_level: ExplanationLevel 
     prompt = (
         f"Create high-quality learning materials. {explanation_prompt}\n"
         f"Summary of document:\n{summary}{context_part}"
-        "Return JSON with:\n"
-        f"flashcards: {n_items} items, each {{ \"front\": str, \"back\": str }}\n"
-        f"quiz: {n_items} items, each {{ \"question\": str, \"options\": [\"A\",\"B\",\"C\",\"D\"], \"answer\": \"A|B|C|D\" }}\n"
+        "Return ONLY valid JSON with this exact structure (no prose, no markdown):\n"
+        "{\n"
+        f"  \"flashcards\": [ {{ \"front\": string, \"back\": string }} ] (length: {n_items}),\n"
+        f"  \"quiz\": [ {{ \"question\": string, \"options\": [\"A\",\"B\",\"C\",\"D\"], \"answer\": \"A\"|\"B\"|\"C\"|\"D\" }} ] (length: {n_items})\n"
+        "}\n"
     )
     # Lighten prompt on rate-limit retries by truncating context
     try:
@@ -737,11 +739,11 @@ async def generate_concept_map(summary: str) -> Dict:
     """Generate a concept map showing relationships between key concepts."""
     try:
         prompt = f"""
-Create a concept map from this summary. Return as JSON with this structure:
+Create a concept map from this summary.
+Return ONLY valid JSON with this exact structure (no prose, no markdown):
 {{
   "nodes": [
-    {{"id": "concept1", "label": "Concept Name", "level": 1}},
-    {{"id": "concept2", "label": "Related Concept", "level": 2}}
+    {{"id": "concept1", "label": "Concept Name", "level": 1}}
   ],
   "edges": [
     {{"from": "concept1", "to": "concept2", "label": "relationship"}}
@@ -1250,7 +1252,7 @@ async def _handle_workflow_generation(message: str, conv_id: str, file_context: 
         IMPORTANT: Generate a proper Mermaid diagram code that can be rendered as a visual flowchart.
         Use different shapes for different types of steps (rectangles for processes, diamonds for decisions, etc.)
         
-        Return the workflow as JSON with this structure:
+        Return ONLY valid JSON (no prose, no markdown) with this structure:
         {{
             "title": "Workflow Title",
             "description": "Comprehensive workflow description",
