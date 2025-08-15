@@ -1,4 +1,4 @@
-# TrainPI Backend
+# SkillSpring Backend
 
 A comprehensive backend system for AI-powered career guidance and personalized learning experiences. Built with FastAPI, featuring intelligent PDF processing, LLM-powered content generation, and sophisticated recommendation systems.
 
