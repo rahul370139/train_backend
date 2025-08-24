@@ -236,4 +236,4 @@ SUPABASE_KEY=your_supabase_key
 
 ---
 
-*This backend powers the TrainPI platform, providing intelligent career guidance and personalized learning experiences through advanced AI and machine learning technologies.*
+*This backend powers the SkillSpring platform, providing intelligent career guidance and personalized learning experiences through advanced AI and machine learning technologies.*

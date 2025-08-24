@@ -5,16 +5,15 @@ comprehensive API server with enhanced career guidance, learning management,
 and AI-powered features.
 """
 
-from fastapi import FastAPI, UploadFile, File, HTTPException, Query
+from fastapi import FastAPI, UploadFile, File, HTTPException, Query, Form
 from fastapi.middleware.cors import CORSMiddleware
 from loguru import logger
 import asyncio, tempfile, os, json
 from pathlib import Path
 from schemas import (
-    DistillRequest, DistillResponse, LessonCompletion, UserRole, 
+    UserRole, 
     RecommendationRequest, ExplanationLevel, Framework, ChatMessage, 
-    ChatResponse, ChatWithFileRequest, ConversationHistory, ChatFileUpload,
-    CareerMatchRequest, CareerMatchResponse, CareerCard, CareerQuizResponse, CareerQuizQuestion,
+    ChatResponse, CareerMatchRequest, CareerMatchResponse, CareerCard, CareerQuizResponse, CareerQuizQuestion,
     RoadmapRequest, RoadmapResponse, LessonSearchRequest, LessonSearchResponse,
     CareerGuidanceRequest, CareerGuidanceResponse, InterviewSimulationRequest, InterviewSimulationResponse,
     InterviewAnswerRequest, InterviewAnswerResponse, CareerAdviceRequest, CareerAdviceResponse,
@@ -26,11 +25,17 @@ from schemas import (
     UnifiedRoadmapRequest, UnifiedRoadmapResponse
 )
 from distiller import (
-    pdf_to_text, chunk_text, embed_chunks, detect_framework, detect_multiple_frameworks,
+    pdf_to_text, chunk_text, embed_chunks, detect_framework,
     map_reduce_summary, gen_flashcards_quiz, generate_concept_map,
     process_chat_message, process_file_for_chat,
     get_conversation_history, get_user_conversations,
     get_side_menu_data, update_explanation_level, update_framework_preference
+)
+from agents import (
+    SummarizerAgent, DiagnosticAgent, AgentRouter,
+    ingest_pdf, gen_flashcards, gen_quiz,
+    get_mastery, qa_flashcards, qa_quiz,
+    repair_flashcards, repair_quiz
 )
 from supabase_helper import (
     insert_lesson, insert_cards, insert_concept_map, mark_lesson_completed,
@@ -78,6 +83,9 @@ async def get_role_based_recommendations(user_id: str, role: str, experience_lev
         return []
 
 app = FastAPI(title="TrainPi Microlearning API")
+
+# Initialize global agent router
+router = AgentRouter()
 
 app.add_middleware(
     CORSMiddleware,
@@ -1864,3 +1872,193 @@ def _get_micro_lessons_for_framework(framework_value: str, limit: int = 6) -> Li
         # Fallback: pick a few broadly useful lessons
         filtered = [ml for ml in lessons if ml.get('category') in ['programming', 'data_science']]
     return filtered[:limit]
+
+
+# ============================================================================
+# AGENTIC AI ENDPOINTS
+# ============================================================================
+
+@app.post("/api/ingest/pdf")
+async def ingest_pdf_endpoint(
+    user_id: str = Form(...),
+    file: UploadFile = File(...)
+):
+    """Ingest a PDF document for processing by the agentic system"""
+    try:
+        # Validate file type
+        if not file.filename.lower().endswith('.pdf'):
+            raise HTTPException(status_code=400, detail="Only PDF files are supported")
+        
+        # Read file bytes
+        file_bytes = await file.read()
+        
+        # Create temporary file for processing
+        with tempfile.NamedTemporaryFile(delete=False, suffix='.pdf') as temp_file:
+            temp_file.write(file_bytes)
+            temp_file_path = temp_file.name
+        
+        try:
+            # Ingest PDF using agentic system
+            result = await ingest_pdf(temp_file_path, user_id)
+            
+            if result.get("error"):
+                raise HTTPException(status_code=500, detail=result["error"])
+            
+            return {
+                "pdf_id": result["pdf_id"],
+                "status": "success"
+            }
+            
+        finally:
+            # Clean up temporary file
+            os.unlink(temp_file_path)
+            
+    except HTTPException:
+        raise
+    except Exception as e:
+        logger.error(f"PDF ingestion failed: {e}")
+        raise HTTPException(status_code=500, detail=f"PDF ingestion failed: {str(e)}")
+
+@app.post("/api/agent/route")
+async def route_agent(req: dict):
+    """Detect intent and return next steps."""
+    try:
+        message = req.get("message", "")
+        pdf_id = req.get("pdf_id")
+        intent_info = router.detect_intent(message, pdf_present=bool(pdf_id))
+        return intent_info
+        
+    except Exception as e:
+        logger.error(f"Agent routing failed: {e}")
+        raise HTTPException(status_code=500, detail=f"Agent routing failed: {str(e)}")
+
+@app.post("/api/agent/summary")
+async def summary_agent(req: dict):
+    """Generate structured summary using SummarizerAgent"""
+    try:
+        pdf_id = req["pdf_id"]
+        user_id = req["user_id"]
+        topic = req.get("topic", "")
+        
+        agent = SummarizerAgent(pdf_id, user_id, topic)
+        result = await agent.run()
+        return result
+        
+    except Exception as e:
+        logger.error(f"Summary generation failed: {e}")
+        raise HTTPException(status_code=500, detail=f"Summary generation failed: {str(e)}")
+
+@app.post("/api/agent/flashcards")
+async def flashcards_agent(req: dict):
+    """Generate validated flashcards using the agentic system"""
+    try:
+        pdf_id = req["pdf_id"]
+        topic = req.get("topic", "")
+        num = req.get("num", 8)
+        
+        cards = await gen_flashcards(pdf_id, topic, num)
+        if not qa_flashcards(cards):
+            cards = await repair_flashcards(cards, pdf_id, topic, num)
+        return {"flashcards": cards}
+        
+    except Exception as e:
+        logger.error(f"Flashcard generation failed: {e}")
+        raise HTTPException(status_code=500, detail=f"Flashcard generation failed: {str(e)}")
+
+
+@app.post("/api/agent/quiz")
+async def quiz_agent(req: dict):
+    """Generate MCQ quiz using the agentic system"""
+    try:
+        pdf_id = req["pdf_id"]
+        topic = req.get("topic", "")
+        num = req.get("num", 8)
+        
+        quiz = await gen_quiz(pdf_id, topic, num)
+        if not qa_quiz(quiz):
+            quiz = await repair_quiz(quiz, pdf_id, topic, num)
+        return {"quiz": quiz}
+        
+    except Exception as e:
+        logger.error(f"Quiz generation failed: {e}")
+        raise HTTPException(status_code=500, detail=f"Quiz generation failed: {str(e)}")
+
+
+@app.post("/api/agent/diagnostic")
+async def diagnostic_agent(req: dict):
+    """Run full diagnostic cycle using DiagnosticAgent"""
+    try:
+        pdf_id = req["pdf_id"]
+        user_id = req["user_id"]
+        topic = req.get("topic", "")
+        num = req.get("num", 10)
+        
+        agent = DiagnosticAgent(pdf_id, user_id, topic)
+        result = await agent.run(num_questions=num)
+        return result
+        
+    except Exception as e:
+        logger.error(f"Diagnostic generation failed: {e}")
+        raise HTTPException(status_code=500, detail=f"Diagnostic generation failed: {str(e)}")
+
+
+@app.post("/api/agent/diagnostic/results")
+async def agent_diagnostic_results_endpoint(
+    request: dict
+):
+    """Process diagnostic results and update mastery scores"""
+    try:
+        pdf_id = request.get("pdf_id")
+        user_id = request.get("user_id")
+        topic = request.get("topic", "")
+        user_answers = request.get("user_answers", [])
+        session_id = request.get("session_id")
+        
+        if not pdf_id or not user_id or not user_answers:
+            raise HTTPException(status_code=400, detail="pdf_id, user_id, and user_answers are required")
+        
+        # Initialize DiagnosticAgent
+        agent = DiagnosticAgent(pdf_id, user_id, topic)
+        if session_id:
+            agent.session_id = session_id
+        
+        # Process results
+        results = await agent.process_results(user_answers)
+        
+        if results.get("error"):
+            raise HTTPException(status_code=500, detail=results["error"])
+        
+        return {
+            "status": "success",
+            "results": results,
+            "message": "Diagnostic results processed successfully"
+        }
+        
+    except HTTPException:
+        raise
+    except Exception as e:
+        logger.error(f"Diagnostic results processing failed: {e}")
+        raise HTTPException(status_code=500, detail=f"Diagnostic results processing failed: {str(e)}")
+
+
+@app.get("/api/agent/mastery/{user_id}")
+async def get_user_mastery_endpoint(
+    user_id: str,
+    topic: Optional[str] = Query(None, description="Specific topic to get mastery for")
+):
+    """Get user mastery scores for topics"""
+    try:
+        mastery_data = get_mastery(user_id, topic)
+        
+        return {
+            "status": "success",
+            "mastery": mastery_data,
+            "message": "Mastery data retrieved successfully"
+        }
+        
+    except Exception as e:
+        logger.error(f"Mastery retrieval failed: {e}")
+        raise HTTPException(status_code=500, detail=f"Mastery retrieval failed: {str(e)}")
+
+
+

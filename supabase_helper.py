@@ -4,6 +4,7 @@ from datetime import datetime
 from typing import List, Dict, Optional
 from schemas import Framework, ExplanationLevel
 from uuid import UUID, uuid5, NAMESPACE_DNS
+from typing import Any
 
 # Initialize Supabase client only if environment variables are available
 SUPA = None
@@ -345,3 +346,83 @@ def get_lesson_full_text(lesson_id: int) -> Optional[str]:
     except Exception as e:
         logger.error(f"Supabase get_lesson_full_text failed: {e}")
         return None
+
+
+# ============================================================================
+# MASTERY TRACKING FUNCTIONS FOR AGENTIC SYSTEM
+# ============================================================================
+
+def fetch_mastery(user_id: str) -> Dict[str, float]:
+    """Fetch user mastery scores for all skills from the mastery table"""
+    if not SUPA:
+        logger.warning("Supabase not available. Using local mastery storage.")
+        return {}
+    
+    try:
+        res = SUPA.table("mastery").select("*").eq("user_id", user_id).execute()
+        mastery = {}
+        for row in res.data:
+            mastery[row["skill"]] = row["score"]
+        return mastery
+    except Exception as e:
+        logger.error(f"Supabase fetch_mastery failed: {e}")
+        return {}
+
+
+def update_mastery_row(user_id: str, skill: str, score: float):
+    """Update or insert a mastery score for a user and skill"""
+    if not SUPA:
+        logger.warning("Supabase not available. Mastery update skipped.")
+        return
+    
+    try:
+        SUPA.table("mastery").upsert({
+            "user_id": user_id, 
+            "skill": skill, 
+            "score": score,
+            "updated_at": datetime.utcnow().isoformat()
+        }).execute()
+        logger.info(f"Mastery updated for user {user_id}, skill {skill}: {score}")
+    except Exception as e:
+        logger.error(f"Supabase update_mastery_row failed: {e}")
+
+
+def insert_doc_concepts(pdf_id: str, user_id: str, concepts: List[Dict[str, Any]]):
+    """Insert document concepts extracted from PDF processing"""
+    if not SUPA:
+        logger.warning("Supabase not available. Document concepts not stored.")
+        return
+    
+    try:
+        # Create concept records
+        concept_records = []
+        for concept in concepts:
+            concept_records.append({
+                "pdf_id": pdf_id,
+                "user_id": user_id,
+                "concept": concept.get("concept", ""),
+                "frequency": concept.get("frequency", 0),
+                "page_references": concept.get("page_references", []),
+                "created_at": datetime.utcnow().isoformat()
+            })
+        
+        # Insert concepts
+        SUPA.table("doc_concepts").insert(concept_records).execute()
+        logger.info(f"Inserted {len(concept_records)} concepts for PDF {pdf_id}")
+        
+    except Exception as e:
+        logger.error(f"Supabase insert_doc_concepts failed: {e}")
+
+
+def get_doc_concepts(pdf_id: str, user_id: str) -> List[Dict[str, Any]]:
+    """Retrieve document concepts for a specific PDF and user"""
+    if not SUPA:
+        logger.warning("Supabase not available. No document concepts available.")
+        return []
+    
+    try:
+        res = SUPA.table("doc_concepts").select("*").eq("pdf_id", pdf_id).eq("user_id", user_id).execute()
+        return res.data
+    except Exception as e:
+        logger.error(f"Supabase get_doc_concepts failed: {e}")
+        return []
