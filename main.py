@@ -31,11 +31,20 @@ from distiller import (
     get_conversation_history, get_user_conversations,
     get_side_menu_data, update_explanation_level, update_framework_preference
 )
-from agents import (
-    SummarizerAgent, DiagnosticAgent, AgentRouter,
-    ingest_pdf, gen_flashcards, gen_quiz,
-    get_mastery, qa_flashcards, qa_quiz,
+from study_agent import (
+    SummarizerAgent, DiagnosticAgent, AgentRouter
+)
+from learn_tools import (
+    ingest_pdf, gen_flashcards, gen_quiz
+)
+from validators import (
+    qa_flashcards, qa_quiz
+)
+from repairs import (
     repair_flashcards, repair_quiz
+)
+from mastery import (
+    get_mastery
 )
 from supabase_helper import (
     insert_lesson, insert_cards, insert_concept_map, mark_lesson_completed,

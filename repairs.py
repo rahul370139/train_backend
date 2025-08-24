@@ -10,8 +10,8 @@ from datetime import datetime
 import asyncio
 
 # Import existing functionality
-from .learn_tools import gen_flashcards, gen_quiz
-from .validators import qa_flashcards, qa_quiz, get_flashcard_errors, get_quiz_errors
+from learn_tools import gen_flashcards, gen_quiz
+from validators import qa_flashcards, qa_quiz, get_flashcard_errors, get_quiz_errors
 
 
 class ContentRepairer:

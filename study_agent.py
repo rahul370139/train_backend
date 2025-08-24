@@ -10,12 +10,12 @@ from datetime import datetime
 import asyncio
 
 # Import optimized functionality
-from .learn_tools import (
+from learn_tools import (
     ingest_pdf, gen_summary, gen_flashcards, gen_quiz
 )
-from .validators import qa_flashcards, qa_quiz
-from .repairs import repair_flashcards, repair_quiz
-from .mastery import get_mastery, update_mastery
+from validators import qa_flashcards, qa_quiz
+from repairs import repair_flashcards, repair_quiz
+from mastery import get_mastery, update_mastery
 
 
 class BaseAgent:
